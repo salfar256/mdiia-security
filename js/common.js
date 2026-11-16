@@ -48,7 +48,9 @@ export function pasangLogin({ peranDiizinkan, judul, onMasuk }) {
       </div>
       <button id="lg-btn" class="btn besar">MASUK</button>
       <p id="lg-msg" class="pesan"></p>
+      <div id="lg-pasang"></div>
     </div>`;
+  pasangTombolInstal(box.querySelector("#lg-pasang"));
   const msg = box.querySelector("#lg-msg");
   const pass = box.querySelector("#lg-pass"), mata = box.querySelector("#lg-mata");
   mata.onclick = () => {
@@ -92,3 +94,39 @@ export function pasangLogin({ peranDiizinkan, judul, onMasuk }) {
 }
 
 export const keluarAkun = () => signOut(auth);
+
+// ---------- Tombol "Pasang di HP" (PWA) ----------
+let promptInstal = null;
+const sudahTerpasang = () =>
+  matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+
+addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); promptInstal = e; });
+addEventListener("appinstalled", () => {
+  promptInstal = null;
+  document.querySelectorAll(".kotak-pasang").forEach((k) => k.remove());
+});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+export function pasangTombolInstal(wadah) {
+  if (!wadah || sudahTerpasang() || wadah.querySelector(".kotak-pasang")) return;
+  const kotak = document.createElement("div");
+  kotak.className = "kotak-pasang";
+  kotak.innerHTML = `<button type="button" class="btn besar pasang">📲 Pasang Aplikasi di HP</button>
+    <p class="petunjuk-pasang" hidden></p>`;
+  const tombol = kotak.querySelector("button"), petunjuk = kotak.querySelector("p");
+  tombol.onclick = async () => {
+    if (promptInstal) {
+      promptInstal.prompt();
+      const hasil = await promptInstal.userChoice.catch(() => null);
+      if (hasil?.outcome === "accepted") kotak.remove();
+      promptInstal = null;
+      return;
+    }
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    petunjuk.innerHTML = ios
+      ? "Di iPhone: buka halaman ini di <b>Safari</b>, tekan tombol <b>Bagikan</b> (kotak dengan panah ke atas), lalu pilih <b>Tambahkan ke Layar Utama</b>."
+      : "Di Android: buka halaman ini di <b>Chrome</b>, tekan menu <b>⋮</b> di kanan atas, lalu pilih <b>Instal aplikasi</b> atau <b>Tambahkan ke layar utama</b>.";
+    petunjuk.hidden = !petunjuk.hidden;
+  };
+  wadah.appendChild(kotak);
+}

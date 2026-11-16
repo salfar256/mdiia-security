@@ -4,26 +4,26 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>MDIIA Security – Cetak Kartu</title>
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="css/style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <style>
-  .lembar { display: flex; flex-wrap: wrap; gap: 6mm; justify-content: flex-start; }
-  .kartu-cetak { width: 85.6mm; height: 54mm; border: 1px dashed #999; border-radius: 3mm; background: #fff;
-    display: flex; padding: 3mm; gap: 3mm; page-break-inside: avoid; break-inside: avoid; overflow: hidden; }
-  .kartu-cetak .qr { width: 44mm; height: 44mm; flex: none; align-self: center; }
-  .kartu-cetak .qr svg { width: 100%; height: 100%; }
-  .kartu-cetak .teks { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
-  .kartu-cetak .pondok { font-size: 7.5pt; color: #1f7a3f; font-weight: 700; text-transform: uppercase; }
-  .kartu-cetak .judul { font-size: 13pt; font-weight: 900; line-height: 1.1; margin: 1.5mm 0; }
-  .kartu-cetak .milik { font-size: 7.5pt; color: #555; }
-  .kartu-cetak .nama { font-size: 10pt; font-weight: 700; }
-  .kartu-cetak .nomor { font-size: 9pt; margin-top: 1.5mm; background: #1f7a3f; color: #fff;
-    padding: 0.8mm 2mm; border-radius: 2mm; align-self: flex-start; }
-  .kartu-cetak .catatan { font-size: 6pt; color: #777; margin-top: 2mm; }
+  .lembar { display: flex; flex-wrap: wrap; gap: 8mm; justify-content: center; }
+  .kartu-cetak { width: 54mm; height: 85.6mm; position: relative; break-inside: avoid; page-break-inside: avoid; }
+  .kartu-cetak img { width: 54mm; height: 85.6mm; display: block; }
+  /* garis bantu potong */
+  .kartu-cetak { outline: 0.2mm dashed #aaa; outline-offset: 1.2mm; }
+  .unduh { display: block; text-align: center; font-size: 13px; margin-top: 4mm; }
+  .pilih { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 16px; }
   @media print {
     body { background: #fff; }
-    .no-print { display: none !important; }
+    .no-print, .unduh { display: none !important; }
     .wrap { padding: 0; max-width: none; }
+    .lembar { gap: 6mm; justify-content: flex-start; }
     @page { size: A4; margin: 10mm; }
   }
 </style>
@@ -33,20 +33,32 @@
 <div id="app" hidden class="wrap">
   <div class="no-print top">
     <h2>Cetak Kartu Izin</h2>
-    <button class="btn" onclick="print()">🖨 Cetak</button>
+    <div>
+      <a class="btn abu kecil" href="admin.html" style="text-decoration:none">⚙ Admin</a>
+      <button class="btn" id="cetak">🖨 Cetak</button>
+    </div>
   </div>
-  <p class="no-print">Cetak di kertas tebal / art paper, gunting, lalu laminating. Ukuran kartu = ukuran KTP.</p>
+  <div class="no-print card">
+    <b>Pilih kartu yang dicetak</b> (misalnya hanya kartu pengganti):
+    <div class="pilih" id="pilih"></div>
+    <p style="margin:0;opacity:.7;font-size:14px">Cetak di A4 kertas tebal/art paper, skala <b>100% (Actual size)</b>,
+      gunting tepat di tepi kartu (54 × 85,6 mm), lalu laminating.</p>
+  </div>
+  <p id="status" class="no-print">Menyiapkan kartu…</p>
   <div class="lembar" id="lembar"></div>
 </div>
 
 <script type="module">
 import { db, pasangLogin, esc } from "./js/common.js";
-import { NAMA_PONDOK } from "./js/firebase-config.js";
+import { gambarKartu } from "./js/kartu-render.js";
 import { collection, getDocs } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-function qrSvg(teks) {
-  const q = qrcode(0, "M"); q.addData(teks); q.make();
-  return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+const $ = (id) => document.getElementById(id);
+let semua = [];
+
+function tampilkan() {
+  const dipilih = new Set([...document.querySelectorAll("#pilih input:checked")].map((i) => i.value));
+  document.querySelectorAll(".bungkus").forEach((b) => b.hidden = !dipilih.has(b.dataset.id));
 }
 
 pasangLogin({
@@ -54,22 +66,29 @@ pasangLogin({
   judul: "MDIIA Security – Cetak Kartu",
   onMasuk: async () => {
     const snap = await getDocs(collection(db, "kartu"));
-    const kartu = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+    semua = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
       .sort((a, b) => (a.pemilik + a.nomor).localeCompare(b.pemilik + b.nomor));
-    document.getElementById("lembar").innerHTML = kartu.map((k) => `
-      <div class="kartu-cetak">
-        <div class="qr">${qrSvg("IZIN:" + k.id)}</div>
-        <div class="teks">
-          <div class="pondok">${esc(NAMA_PONDOK)}</div>
-          <div class="judul">KARTU IZIN KELUAR</div>
-          <div class="milik">Milik pengasuh:</div>
-          <div class="nama">${esc(k.pemilik)}</div>
-          <div class="nomor">${esc(k.nomor)}</div>
-          <div class="catatan">Tunjukkan ke satpam saat keluar. Kembalikan ke pengasuh.</div>
-        </div>
-      </div>`).join("") || "<p>Belum ada kartu. Buat dulu di halaman Admin.</p>";
+    if (!semua.length) { $("status").textContent = "Belum ada kartu. Buat dulu lewat Pengaturan Awal di halaman Admin."; return; }
+
+    $("pilih").innerHTML = semua.map((k) => `<label><input type="checkbox" value="${k.id}" checked>
+      ${esc(k.pemilik)} – ${esc(k.nomor)}</label>`).join("");
+    $("pilih").onchange = tampilkan;
+
+    for (const k of semua) {
+      const kanvas = await gambarKartu(k);
+      const url = kanvas.toDataURL("image/png");
+      const b = document.createElement("div");
+      b.className = "bungkus"; b.dataset.id = k.id;
+      b.innerHTML = `<div class="kartu-cetak"><img alt="Kartu ${esc(k.pemilik)} ${esc(k.nomor)}"></div>
+        <a class="unduh" download="Kartu_Izin_${esc(k.pemilik).replace(/\W+/g, "_")}_${esc(k.nomor).replace(/\W+/g, "_")}.png">⬇ Unduh gambar</a>`;
+      b.querySelector("img").src = url;
+      b.querySelector("a").href = url;
+      $("lembar").appendChild(b);
+    }
+    $("status").textContent = `${semua.length} kartu siap dicetak.`;
   },
 });
+$("cetak").onclick = () => print();
 </script>
 </body>
 </html>

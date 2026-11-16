@@ -40,6 +40,7 @@
   <button id="mulai" class="btn">▶ MULAI</button>
   <div id="kamera"></div>
   <div id="sinyal"></div>
+  <div id="wadah-pasang" style="max-width:520px;width:90%;margin:0 auto"></div>
   <div id="admin-bar" hidden style="text-align:center;margin:16px 0">
     <a class="btn" href="admin.html" style="text-decoration:none;display:inline-block;margin:4px">⚙ Admin &amp; Pengaturan Awal</a>
     <a class="btn abu" href="pengasuh.html" style="text-decoration:none;display:inline-block;margin:4px">👤 Halaman Pengasuh</a>
@@ -54,14 +55,40 @@
 </div>
 
 <script type="module">
-import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun } from "./js/common.js";
+import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, pasangTombolInstal } from "./js/common.js";
 import { doc, collection, runTransaction, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
 let scanner = null, sibuk = false, kodeTerakhir = "", waktuTerakhir = 0, audio = null;
 
-// ---------- suara & getar ----------
+// ---------- suara notifikasi ----------
+const SUARA = {
+  disetujui: new Audio("suara/izin-disetujui.mp3"),
+  belumAktif: new Audio("suara/izin-belum-aktif.mp3"),
+  tidakTerdaftar: new Audio("suara/kartu-tidak-terdaftar.mp3"),
+};
+Object.values(SUARA).forEach((a) => { a.preload = "auto"; });
+
+// Browser HP hanya mengizinkan suara setelah ada sentuhan: buka kuncinya saat MULAI ditekan
+function bukaKunciSuara() {
+  Object.values(SUARA).forEach((a) => {
+    a.muted = true;
+    a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
+  });
+}
+
+function putar(jenis) {
+  const ok = jenis === "disetujui";
+  if (navigator.vibrate) navigator.vibrate(ok ? 150 : [300, 100, 300]);
+  const a = SUARA[jenis];
+  Object.values(SUARA).forEach((x) => { if (x !== a) { x.pause(); x.currentTime = 0; } });
+  if (!a) return bunyi(ok);
+  a.currentTime = 0;
+  a.play().catch(() => bunyi(ok)); // cadangan: bunyi beep
+}
+
+// ---------- bunyi cadangan (beep) ----------
 function bunyi(ok) {
   try {
     audio = audio || new (window.AudioContext || window.webkitAudioContext)();
@@ -93,7 +120,7 @@ async function prosesKode(teks) {
   kodeTerakhir = teks; waktuTerakhir = now; sibuk = true;
 
   if (!teks.startsWith("IZIN:")) {
-    bunyi(false); return tampil("merah", "✖", "BUKAN KARTU IZIN", "");
+    putar("tidakTerdaftar"); return tampil("merah", "✖", "KARTU TIDAK TERDAFTAR", "");
   }
   const id = teks.slice(5).trim();
   try {
@@ -116,27 +143,29 @@ async function prosesKode(teks) {
 
     const label = hasil.k ? `${hasil.k.nomor} – milik ${hasil.k.pemilik}` : "";
     if (hasil.jenis === "KELUAR") {
-      bunyi(true); tampil("hijau", "✔", "BOLEH KELUAR", label);
+      putar("disetujui"); tampil("hijau", "✔", "IZIN KELUAR DISETUJUI", label);
     } else if (hasil.jenis === "DITOLAK") {
-      bunyi(false); tampil("merah", "✖", "TIDAK BOLEH",
+      putar("belumAktif"); tampil("merah", "✖", "IZIN BELUM AKTIF",
         `Kartu sudah terpakai.\nAktif lagi: ${fmtWaktu(hasil.aktifLagi)}\n${label}`, 5000);
     } else if (hasil.jenis === "BLOKIR") {
-      bunyi(false); tampil("merah", "✖", "KARTU DIBLOKIR", label, 5000);
+      putar("belumAktif"); tampil("merah", "✖", "KARTU DIBLOKIR", label, 5000);
     } else {
-      bunyi(false); tampil("merah", "✖", "KARTU TIDAK DIKENAL", "");
+      putar("tidakTerdaftar"); tampil("merah", "✖", "KARTU TIDAK TERDAFTAR", "");
     }
   } catch (e) {
     console.error(e);
-    bunyi(false);
-    if (e.code === "permission-denied") tampil("merah", "✖", "TIDAK BOLEH", "Kartu belum aktif.", 5000);
-    else tampil("kuning", "⚠", "TIDAK ADA SINYAL", "Coba pindai lagi.", 3000);
+    if (e.code === "permission-denied") {
+      putar("belumAktif"); tampil("merah", "✖", "IZIN BELUM AKTIF", "Silakan hubungi pengasuh.", 5000);
+    } else {
+      bunyi(false); tampil("kuning", "⚠", "TIDAK ADA SINYAL", "Coba pindai lagi.", 3000);
+    }
   }
 }
 
 // ---------- kamera ----------
 async function mulaiKamera() {
   $("mulai").hidden = true;
-  bunyi(true); // membuka izin suara di browser
+  bukaKunciSuara(); // membuka izin suara di browser HP
   try { await navigator.wakeLock?.request("screen"); } catch (e) {}
   scanner = new Html5Qrcode("kamera");
   try {
@@ -164,12 +193,12 @@ pasangLogin({
       location.replace("admin.html"); return;
     }
     cekSinyal(); $("mulai").onclick = mulaiKamera;
+    pasangTombolInstal($("wadah-pasang"));
     $("admin-bar").hidden = peran.role !== "admin";
   },
 });
 $("keluar-akun").onclick = () => { if (confirm("Keluar dari akun satpam?")) keluarAkun(); };
 
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body>
 </html>

@@ -7,6 +7,7 @@
 <title>MDIIA Security – Pengasuh</title>
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest-pengasuh.json">
 <link rel="stylesheet" href="css/style.css">
 <style>
   .kartu { padding: 22px; margin-bottom: 14px; }
@@ -22,6 +23,7 @@
     <button class="btn abu kecil" id="keluar">Keluar akun</button>
   </div>
   <div id="daftar"></div>
+  <div id="wadah-pasang"></div>
   <p style="opacity:.7;font-size:14px">Kartu yang sudah terpakai akan terisi sendiri setelah 12 jam.
     Tekan ISI ULANG hanya jika ada keperluan mendesak.</p>
 
@@ -42,7 +44,7 @@
 </div>
 
 <script type="module">
-import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc } from "./js/common.js";
+import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc, pasangTombolInstal } from "./js/common.js";
 import { collection, query, where, onSnapshot, doc, runTransaction, serverTimestamp, orderBy, limit }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -99,6 +101,7 @@ pasangLogin({
   judul: "MDIIA Security – Pengasuh",
   onMasuk: (user, peran) => {
     $("sapaan").textContent = peran.nama || "Kartu Saya";
+    pasangTombolInstal($("wadah-pasang"));
     if (peran.role === "admin") $("sapaan").insertAdjacentHTML("afterend",
       '<a class="btn kecil" href="admin.html" style="text-decoration:none">⚙ Admin</a>');
     const q = query(collection(db, "kartu"), where("pemilikEmail", "==", emailSaya()));
