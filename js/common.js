@@ -133,3 +133,47 @@ export function pasangTombolInstal(wadah) {
   };
   wadah.appendChild(kotak);
 }
+
+
+// ---------- Kotak konfirmasi "Iya / Tidak" ----------
+// Pakai: if (await konfirmasi({ judul, pesan })) { ... }
+export function konfirmasi({ ikon = "❓", judul = "Yakin?", pesan = "", ya = "Iya", tidak = "Tidak", bahaya = false } = {}) {
+  return new Promise((selesai) => {
+    const latar = document.createElement("div");
+    latar.className = "modal-latar";
+    latar.innerHTML = `<div class="modal" role="dialog" aria-modal="true">
+        <div class="modal-ikon">${ikon}</div>
+        <div class="modal-judul">${esc(judul)}</div>
+        ${pesan ? `<div class="modal-pesan">${pesan}</div>` : ""}
+        <div class="modal-tombol">
+          <button type="button" class="btn abu" data-jawab="0">${esc(tidak)}</button>
+          <button type="button" class="btn ${bahaya ? "merah" : ""}" data-jawab="1">${esc(ya)}</button>
+        </div>
+      </div>`;
+    const tutup = (jawab) => {
+      latar.classList.add("keluar");
+      setTimeout(() => latar.remove(), 150);
+      document.removeEventListener("keydown", tombolEsc);
+      selesai(jawab);
+    };
+    const tombolEsc = (e) => { if (e.key === "Escape") tutup(false); };
+    latar.addEventListener("click", (e) => {
+      if (e.target === latar) return tutup(false);
+      const b = e.target.closest("[data-jawab]");
+      if (b) tutup(b.dataset.jawab === "1");
+    });
+    document.addEventListener("keydown", tombolEsc);
+    document.body.appendChild(latar);
+    latar.querySelector('[data-jawab="1"]').focus();
+  });
+}
+
+// ---------- Pemberitahuan singkat (toast) ----------
+export function beriTahu(teks, jenis = "sukses", lama = 3000) {
+  const t = document.createElement("div");
+  t.className = `toast ${jenis}`;
+  t.textContent = teks;
+  document.body.appendChild(t);
+  requestAnimationFrame(() => t.classList.add("tampil"));
+  setTimeout(() => { t.classList.remove("tampil"); setTimeout(() => t.remove(), 300); }, lama);
+}

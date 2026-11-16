@@ -55,7 +55,7 @@
 </div>
 
 <script type="module">
-import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, pasangTombolInstal } from "./js/common.js";
+import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, pasangTombolInstal, konfirmasi, beriTahu } from "./js/common.js";
 import { doc, collection, runTransaction, serverTimestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -181,7 +181,7 @@ async function mulaiKamera() {
     await scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, prosesKode, () => {});
   } catch (e) {
     $("mulai").hidden = false;
-    alert("Kamera tidak bisa dibuka. Izinkan akses kamera lalu tekan MULAI lagi.");
+    beriTahu("Kamera tidak bisa dibuka. Izinkan akses kamera lalu tekan MULAI lagi.", "gagal", 6000);
   }
 }
 
@@ -206,7 +206,9 @@ pasangLogin({
     $("admin-bar").hidden = peran.role !== "admin";
   },
 });
-$("keluar-akun").onclick = () => { if (confirm("Keluar dari akun satpam?")) keluarAkun(); };
+$("keluar-akun").onclick = async () => {
+  if (await konfirmasi({ ikon: "🚪", judul: "Keluar dari akun?", pesan: "Satpam harus login lagi untuk memindai." })) keluarAkun();
+};
 
 </script>
 </body>

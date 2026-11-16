@@ -63,7 +63,7 @@
 </div>
 
 <script type="module">
-import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc } from "./js/common.js";
+import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc, konfirmasi, beriTahu } from "./js/common.js";
 import {
   collection, query, orderBy, limit, where, onSnapshot, doc, runTransaction, serverTimestamp,
   setDoc, getDocs, writeBatch, Timestamp,
@@ -114,10 +114,15 @@ function gambarKartu() {
 async function ubahKartu(id, jenis) {
   const k = semuaKartu.find((x) => x.id === id);
   let aksi, data;
-  if (jenis === "ISI_ULANG") { aksi = "ISI_ULANG"; data = { terakhirDipakai: null }; }
-  else if (k.aktif === false) { aksi = "BUKA_BLOKIR"; data = { aktif: true }; }
-  else {
-    if (!confirm(`Blokir ${k.nomor} milik ${k.pemilik}? Kartu ini tidak akan bisa dipakai.`)) return;
+  const nama = `${esc(k.nomor)} milik ${esc(k.pemilik)}`;
+  if (jenis === "ISI_ULANG") {
+    if (!await konfirmasi({ ikon: "🔄", judul: "Isi ulang kartu?", pesan: `${nama} bisa dipakai keluar <b>1 kali lagi</b>.` })) return;
+    aksi = "ISI_ULANG"; data = { terakhirDipakai: null };
+  } else if (k.aktif === false) {
+    if (!await konfirmasi({ ikon: "🔓", judul: "Buka blokir kartu?", pesan: `${nama} bisa dipakai lagi.` })) return;
+    aksi = "BUKA_BLOKIR"; data = { aktif: true };
+  } else {
+    if (!await konfirmasi({ ikon: "⛔", judul: "Blokir kartu?", pesan: `${nama} tidak akan bisa dipakai sampai blokir dibuka.`, ya: "Blokir", bahaya: true })) return;
     aksi = "BLOKIR"; data = { aktif: false };
   }
   try {
@@ -127,7 +132,8 @@ async function ubahKartu(id, jenis) {
         kartuId: id, pemilik: k.pemilik, nomor: k.nomor, aksi, waktu: serverTimestamp(), oleh: emailSaya(),
       });
     });
-  } catch (e) { alert("Gagal: " + e.message); }
+    beriTahu({ ISI_ULANG: "✅ Kartu berhasil diisi ulang", BLOKIR: "⛔ Kartu diblokir", BUKA_BLOKIR: "🔓 Blokir kartu dibuka" }[aksi]);
+  } catch (e) { beriTahu("Gagal: " + e.message, "gagal", 5000); }
 }
 
 // ---------- log ----------
@@ -193,7 +199,7 @@ async function simpanPengaturan() {
   const pengasuh = urai($("s-pengasuh").value), satpam = urai($("s-satpam").value);
   const jumlah = Math.max(1, Math.min(5, parseInt($("s-jumlah").value) || 2));
   if (pengasuh.some((p) => p.email.endsWith("@contoh.com")) || satpam.some((p) => p.email.endsWith("@contoh.com"))) {
-    if (!confirm("Masih ada email contoh (@contoh.com). Tetap lanjut?")) return;
+    if (!await konfirmasi({ ikon: "⚠️", judul: "Masih ada email contoh", pesan: "Ada email berakhiran @contoh.com. Tetap simpan?" })) return;
   }
   $("s-msg").textContent = "Menyimpan…";
   try {

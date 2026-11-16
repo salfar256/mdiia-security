@@ -45,7 +45,7 @@
 </div>
 
 <script type="module">
-import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc, pasangTombolInstal } from "./js/common.js";
+import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc, pasangTombolInstal, konfirmasi, beriTahu } from "./js/common.js";
 import { collection, query, where, onSnapshot, doc, runTransaction, serverTimestamp, orderBy, limit }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
@@ -82,7 +82,12 @@ function gambarLog() {
 }
 
 async function isiUlang(id) {
-  if (!confirm("Isi ulang kartu ini? Kartu bisa dipakai keluar 1 kali lagi.")) return;
+  const k = kartuSaya.find((x) => x.id === id);
+  const yakin = await konfirmasi({
+    ikon: "🔄", judul: `Isi ulang ${k ? k.nomor : "kartu"}?`,
+    pesan: "Kartu bisa dipakai keluar <b>1 kali lagi</b> sekarang juga.",
+  });
+  if (!yakin) return;
   try {
     await runTransaction(db, async (tx) => {
       const ref = doc(db, "kartu", id);
@@ -94,7 +99,8 @@ async function isiUlang(id) {
         waktu: serverTimestamp(), oleh: emailSaya(),
       });
     });
-  } catch (e) { alert("Gagal. Periksa internet lalu coba lagi."); }
+    beriTahu(`✅ ${k ? k.nomor : "Kartu"} berhasil diisi ulang`);
+  } catch (e) { beriTahu("Gagal. Periksa internet lalu coba lagi.", "gagal"); }
 }
 
 pasangLogin({
