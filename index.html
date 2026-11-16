@@ -17,6 +17,9 @@
   .judul { text-align: center; font-size: 26px; font-weight: 800; padding: 18px 10px 6px; }
   .sub { text-align: center; font-size: 18px; opacity: .8; margin-bottom: 10px; }
   #kamera { width: 100%; max-width: 520px; margin: 0 auto; border-radius: 16px; overflow: hidden; background: #000; }
+  .senter { display: block; margin: 12px auto 0; width: 90%; max-width: 520px; padding: 16px; font-size: 20px;
+    background: #37474f; }
+  .senter.nyala { background: #ffd54f; color: #1b1b1b; box-shadow: 0 0 18px rgba(255, 213, 79, .6); }
   #mulai { margin: 30px auto; max-width: 520px; width: 90%; padding: 40px; font-size: 32px; }
   #sinyal { text-align: center; padding: 10px; font-size: 15px; }
   #hasil { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
@@ -39,6 +42,7 @@
   <div class="sub">Arahkan kartu izin ke kamera</div>
   <button id="mulai" class="btn">▶ MULAI</button>
   <div id="kamera"></div>
+  <button id="senter" class="btn senter" hidden>🔦 Nyalakan Senter</button>
   <div id="sinyal"></div>
   <div id="wadah-pasang" style="max-width:520px;width:90%;margin:0 auto"></div>
   <div id="admin-bar" hidden style="text-align:center;margin:16px 0">
@@ -178,6 +182,34 @@ async function prosesKode(teks) {
 }
 
 // ---------- kamera ----------
+// ---------- senter (lampu flash kamera) ----------
+let senterNyala = false;
+function dukungSenter() {
+  try { return !!scanner?.getRunningTrackCapabilities?.().torch; } catch (e) { return false; }
+}
+function siapkanSenter() {
+  senterNyala = false;
+  const b = $("senter");
+  b.hidden = false;
+  b.classList.remove("nyala");
+  b.textContent = "🔦 Nyalakan Senter";
+}
+async function aturSenter(nyala) {
+  if (!dukungSenter()) {
+    beriTahu("Senter tidak didukung di HP/browser ini. Coba pakai Chrome di Android.", "gagal", 5000);
+    return;
+  }
+  try {
+    await scanner.applyVideoConstraints({ advanced: [{ torch: nyala }] });
+    senterNyala = nyala;
+    $("senter").classList.toggle("nyala", nyala);
+    $("senter").textContent = nyala ? "🔦 Matikan Senter" : "🔦 Nyalakan Senter";
+  } catch (e) {
+    beriTahu("Senter tidak bisa dinyalakan.", "gagal", 4000);
+  }
+}
+$("senter").onclick = () => aturSenter(!senterNyala);
+
 async function mulaiKamera() {
   $("mulai").hidden = true;
   bukaKunciSuara(); // membuka izin suara di browser HP
@@ -185,6 +217,7 @@ async function mulaiKamera() {
   scanner = new Html5Qrcode("kamera");
   try {
     await scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, prosesKode, () => {});
+    siapkanSenter();
   } catch (e) {
     $("mulai").hidden = false;
     beriTahu("Kamera tidak bisa dibuka. Izinkan akses kamera lalu tekan MULAI lagi.", "gagal", 6000);
