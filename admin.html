@@ -41,7 +41,7 @@
       </select>
     </div>
     <p id="ringkas" class="ringkas"></p>
-    <div id="log" class="daftar-log"></div>
+    <div id="log" class="daftar-log gulir"></div>
   </section>
 
   <details class="card" id="setup">
@@ -201,7 +201,7 @@ function gambarLog() {
   const data = logTersaring();
   const hit = (x) => data.filter((l) => l.aksi === x).length;
   $("ringkas").textContent = `${data.length} catatan · Keluar ${hit("KELUAR")} · Ditolak ${hit("DITOLAK")} · Isi ulang ${hit("ISI_ULANG")}`
-    + ($("tgl").value ? "" : " (300 terakhir)");
+    + ($("tgl").value ? "" : " (300 terakhir)") + (data.length > 10 ? " · geser untuk lainnya" : "");
   $("log").innerHTML = data.map((l) => `<div class="log-item">
       <div class="log-atas"><span class="log-waktu">${fmtWaktu(l.waktu?.toMillis())}</span>
         <span class="tag ${esc(l.aksi)}">${esc(LABEL[l.aksi] || l.aksi)}</span></div>

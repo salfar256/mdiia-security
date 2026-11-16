@@ -36,11 +36,8 @@
         <option value="saya">Kartu saya</option>
       </select>
     </div>
-    <div style="overflow-x:auto;margin-top:8px">
-      <table><thead><tr><th>Waktu</th><th>Kartu</th><th>Aksi</th></tr></thead>
-      <tbody id="log"></tbody></table>
-    </div>
-    <p style="opacity:.6;font-size:13px">Menampilkan 100 catatan terakhir.</p>
+    <p id="ringkas-log" class="ringkas"></p>
+    <div id="log" class="daftar-log gulir"></div>
   </div>
 </div>
 
@@ -70,15 +67,20 @@ function gambar() {
 }
 
 let semuaLog = [];
+const LABEL = { KELUAR: "Keluar", DITOLAK: "Ditolak", ISI_ULANG: "Isi ulang", BLOKIR: "Blokir", BUKA_BLOKIR: "Buka blokir" };
 function gambarLog() {
   const saja = $("f-log").value === "saya";
   const nama = kartuSaya[0]?.pemilik;
   const data = semuaLog.filter((l) => !saja || l.pemilik === nama);
-  $("log").innerHTML = data.map((l) => `<tr>
-    <td>${fmtWaktu(l.waktu?.toMillis())}</td>
-    <td>${esc(l.nomor)} – ${esc(l.pemilik)}</td>
-    <td><span class="tag ${esc(l.aksi)}">${esc(l.aksi.replace("_", " "))}</span></td></tr>`).join("")
-    || `<tr><td colspan="3">Belum ada catatan.</td></tr>`;
+  $("ringkas-log").textContent = data.length > 10
+    ? `${data.length} catatan terbaru · geser ke bawah untuk melihat lainnya`
+    : `${data.length} catatan terbaru`;
+  $("log").innerHTML = data.map((l) => `<div class="log-item">
+      <div class="log-atas"><span class="log-waktu">${fmtWaktu(l.waktu?.toMillis())}</span>
+        <span class="tag ${esc(l.aksi)}">${esc(LABEL[l.aksi] || l.aksi)}</span></div>
+      <div class="log-bawah">${esc(l.nomor)} – ${esc(l.pemilik)}</div>
+      ${l.keterangan ? `<div class="log-ket">${esc(l.keterangan)}</div>` : ""}
+    </div>`).join("") || `<p class="ringkas">Belum ada catatan.</p>`;
 }
 
 async function isiUlang(id) {

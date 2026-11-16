@@ -105,3 +105,10 @@ textarea { width: 100%; min-height: 140px; font-family: monospace; }
 .toast.tampil { transform: translate(-50%, 0); opacity: 1; }
 .link-kecil.ganti { color: #1d4a99; }
 .log-ket { font-size: 12px; opacity: .7; font-style: italic; margin-top: 2px; }
+/* Kotak log: tampil ±10 catatan, sisanya digeser (scroll) */
+.daftar-log.gulir { max-height: 572px; overflow-y: auto; overscroll-behavior: contain;
+  border: 1px solid #e3e8e5; border-radius: 12px; padding: 0 10px; background: #fcfdfc;
+  -webkit-overflow-scrolling: touch; }
+.daftar-log.gulir .log-item:last-child { border-bottom: 0; }
+.daftar-log.gulir::-webkit-scrollbar { width: 6px; }
+.daftar-log.gulir::-webkit-scrollbar-thumb { background: #c5d0c9; border-radius: 3px; }
