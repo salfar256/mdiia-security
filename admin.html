@@ -74,7 +74,7 @@ let semuaKartu = [], semuaLog = [], stopLog = null;
 
 // ---------- status kartu ----------
 function gambarKartu() {
-  const st = semuaKartu.map((k) => ({ k, s: statusKartu(k) }));
+  const st = semuaKartu.filter((k) => !k.diganti).map((k) => ({ k, s: statusKartu(k) }));
   const n = (f) => st.filter(f).length;
   $("ringkas-kartu").innerHTML = semuaKartu.length ? `
     <span class="chip siap">✅ Siap ${n((x) => x.s.siap)}</span>
@@ -95,6 +95,7 @@ function gambarKartu() {
           <span class="aksi">
             ${!s.siap && !s.blokir ? `<button class="btn kecil" data-isi="${k.id}">Isi ulang</button>` : ""}
             <button class="link-kecil" data-blokir="${k.id}">${s.blokir ? "Buka blokir" : "Blokir"}</button>
+            <button class="link-kecil ganti" data-ganti="${k.id}">🔁 Ganti</button>
           </span>
         </div>`;
       }).join("")}
@@ -104,6 +105,7 @@ function gambarKartu() {
   if (!semuaKartu.length) $("setup").open = true;
   $("kartu").querySelectorAll("[data-isi]").forEach((b) => b.onclick = () => ubahKartu(b.dataset.isi, "ISI_ULANG"));
   $("kartu").querySelectorAll("[data-blokir]").forEach((b) => b.onclick = () => ubahKartu(b.dataset.blokir, "BLOKIR"));
+  $("kartu").querySelectorAll("[data-ganti]").forEach((b) => b.onclick = () => gantiKartu(b.dataset.ganti));
 
   const pilih = $("f-pemilik"), nilai = pilih.value;
   const nama = [...new Set(semuaKartu.map((k) => k.pemilik))];
@@ -134,6 +136,41 @@ async function ubahKartu(id, jenis) {
     });
     beriTahu({ ISI_ULANG: "✅ Kartu berhasil diisi ulang", BLOKIR: "⛔ Kartu diblokir", BUKA_BLOKIR: "🔓 Blokir kartu dibuka" }[aksi]);
   } catch (e) { beriTahu("Gagal: " + e.message, "gagal", 5000); }
+}
+
+// ---------- ganti kartu hilang/rusak ----------
+async function gantiKartu(id) {
+  const k = semuaKartu.find((x) => x.id === id);
+  const nama = `${esc(k.nomor)} milik ${esc(k.pemilik)}`;
+  const yakin = await konfirmasi({
+    ikon: "🔁", judul: "Ganti kartu?",
+    pesan: `${nama} yang lama akan <b>diblokir permanen</b> dan dibuatkan kartu baru dengan <b>QR baru</b>.
+      Kartu lama tidak bisa dipakai lagi oleh siapa pun.`,
+    ya: "Ganti", bahaya: true,
+  });
+  if (!yakin) return;
+  const idBaru = idAcak();
+  try {
+    await runTransaction(db, async (tx) => {
+      const refLama = doc(db, "kartu", id);
+      const s = await tx.get(refLama);
+      if (!s.exists() || s.data().diganti) throw new Error("Kartu ini sudah pernah diganti.");
+      tx.update(refLama, { aktif: false, diganti: true, penggantiId: idBaru });
+      tx.set(doc(db, "kartu", idBaru), {
+        nomor: k.nomor, pemilik: k.pemilik, pemilikEmail: k.pemilikEmail,
+        terakhirDipakai: null, aktif: true, menggantikan: id,
+      });
+      tx.set(doc(collection(db, "log")), {
+        kartuId: id, pemilik: k.pemilik, nomor: k.nomor, aksi: "BLOKIR",
+        keterangan: "Kartu hilang/rusak – diganti kartu baru", waktu: serverTimestamp(), oleh: emailSaya(),
+      });
+    });
+  } catch (e) { beriTahu("Gagal: " + e.message, "gagal", 5000); return; }
+  beriTahu(`✅ Kartu baru untuk ${k.pemilik} (${k.nomor}) sudah dibuat`);
+  if (await konfirmasi({ ikon: "🖨️", judul: "Cetak kartu baru sekarang?",
+    pesan: "Halaman cetak akan menampilkan kartu pengganti saja.", ya: "Cetak", tidak: "Nanti" })) {
+    window.open(`cetak.html?kartu=${encodeURIComponent(idBaru)}`, "_blank");
+  }
 }
 
 // ---------- log ----------
@@ -169,12 +206,13 @@ function gambarLog() {
       <div class="log-atas"><span class="log-waktu">${fmtWaktu(l.waktu?.toMillis())}</span>
         <span class="tag ${esc(l.aksi)}">${esc(LABEL[l.aksi] || l.aksi)}</span></div>
       <div class="log-bawah">${esc(l.nomor)} – ${esc(l.pemilik)} <span class="oleh">· ${esc(l.oleh)}</span></div>
+      ${l.keterangan ? `<div class="log-ket">${esc(l.keterangan)}</div>` : ""}
     </div>`).join("") || `<p class="ringkas">Belum ada catatan.</p>`;
 }
 
 function unduhCSV() {
-  const baris = [["Waktu", "Kartu", "Pemilik", "Aksi", "Oleh"]].concat(
-    logTersaring().map((l) => [fmtWaktu(l.waktu?.toMillis()), l.nomor, l.pemilik, l.aksi, l.oleh]));
+  const baris = [["Waktu", "Kartu", "Pemilik", "Aksi", "Oleh", "Keterangan"]].concat(
+    logTersaring().map((l) => [fmtWaktu(l.waktu?.toMillis()), l.nomor, l.pemilik, l.aksi, l.oleh, l.keterangan || ""]));
   const csv = baris.map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));

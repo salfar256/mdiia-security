@@ -67,10 +67,12 @@ pasangLogin({
   onMasuk: async () => {
     const snap = await getDocs(collection(db, "kartu"));
     semua = snap.docs.map((d) => ({ id: d.id, ...d.data() }))
+      .filter((k) => !k.diganti)
       .sort((a, b) => (a.pemilik + a.nomor).localeCompare(b.pemilik + b.nomor));
     if (!semua.length) { $("status").textContent = "Belum ada kartu. Buat dulu lewat Pengaturan Awal di halaman Admin."; return; }
 
-    $("pilih").innerHTML = semua.map((k) => `<label><input type="checkbox" value="${k.id}" checked>
+    const hanya = new URLSearchParams(location.search).get("kartu");
+    $("pilih").innerHTML = semua.map((k) => `<label><input type="checkbox" value="${k.id}" ${!hanya || hanya === k.id ? "checked" : ""}>
       ${esc(k.pemilik)} – ${esc(k.nomor)}</label>`).join("");
     $("pilih").onchange = tampilkan;
 
@@ -85,7 +87,8 @@ pasangLogin({
       b.querySelector("a").href = url;
       $("lembar").appendChild(b);
     }
-    $("status").textContent = `${semua.length} kartu siap dicetak.`;
+    tampilkan();
+    $("status").textContent = hanya ? "Kartu pengganti siap dicetak." : `${semua.length} kartu siap dicetak.`;
   },
 });
 $("cetak").onclick = () => print();

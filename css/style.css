@@ -103,3 +103,5 @@ textarea { width: 100%; min-height: 140px; font-family: monospace; }
   box-shadow: 0 6px 20px rgba(0,0,0,.2); transition: all .25s; max-width: 90vw; text-align: center; }
 .toast.gagal { background: #c0392b; }
 .toast.tampil { transform: translate(-50%, 0); opacity: 1; }
+.link-kecil.ganti { color: #1d4a99; }
+.log-ket { font-size: 12px; opacity: .7; font-style: italic; margin-top: 2px; }

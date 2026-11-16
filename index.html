@@ -157,7 +157,9 @@ async function prosesKode(teks) {
       putar("belumAktif"); tampil("merah", "✖", "IZIN BELUM AKTIF",
         `Kartu sudah terpakai.\nAktif lagi: ${fmtWaktu(hasil.aktifLagi)}\n${label}`, 5500);
     } else if (hasil.jenis === "BLOKIR") {
-      putar("belumAktif"); tampil("merah", "✖", "KARTU DIBLOKIR", label, 5500);
+      putar("belumAktif");
+      tampil("merah", "✖", hasil.k.diganti ? "KARTU SUDAH DIGANTI" : "KARTU DIBLOKIR",
+        (hasil.k.diganti ? "Kartu lama/hilang. Tahan kartu ini.\n" : "") + label, 5500);
     } else {
       putar("tidakTerdaftar"); tampil("merah", "✖", "KARTU TIDAK TERDAFTAR", "", 4500);
     }
