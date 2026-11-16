@@ -63,11 +63,11 @@ const $ = (id) => document.getElementById(id);
 let scanner = null, sibuk = false, kodeTerakhir = "", waktuTerakhir = 0, audio = null;
 
 // ---------- suara notifikasi ----------
-const EFEK = { benar: new Audio("suara/efek-benar.mp3?v=2"), salah: new Audio("suara/efek-salah.mp3?v=2") };
+const EFEK = { benar: new Audio("suara/efek-benar.mp3?v=3"), salah: new Audio("suara/efek-salah.mp3?v=3") };
 const SUARA = {
-  disetujui: new Audio("suara/izin-disetujui.mp3?v=2"),
-  belumAktif: new Audio("suara/izin-belum-aktif.mp3?v=2"),
-  tidakTerdaftar: new Audio("suara/kartu-tidak-terdaftar.mp3?v=2"),
+  disetujui: new Audio("suara/izin-disetujui.mp3?v=3"),
+  belumAktif: new Audio("suara/izin-belum-aktif.mp3?v=3"),
+  tidakTerdaftar: new Audio("suara/kartu-tidak-terdaftar.mp3?v=3"),
 };
 const SEMUA_AUDIO = [...Object.values(EFEK), ...Object.values(SUARA)];
 SEMUA_AUDIO.forEach((a) => { a.preload = "auto"; a.volume = 1; }); // volume maksimal
@@ -81,20 +81,24 @@ function bukaKunciSuara() {
 }
 
 let urutan = 0;
-// Efek suara dulu (benar/salah), lalu suara keterangan
+// Efek suara (benar/salah) lalu suara keterangan, disambung hampir tanpa jeda
 function putar(jenis) {
   const ok = jenis === "disetujui";
   if (navigator.vibrate) navigator.vibrate(ok ? 150 : [300, 100, 300]);
   const giliran = ++urutan;
   SEMUA_AUDIO.forEach((x) => { x.onended = null; x.pause(); x.currentTime = 0; });
   const efek = ok ? EFEK.benar : EFEK.salah, suara = SUARA[jenis];
+  let sudah = false;
   const putarSuara = () => {
-    if (giliran !== urutan || !suara) return;
+    if (sudah || giliran !== urutan || !suara) return;
+    sudah = true;
     suara.currentTime = 0;
     suara.play().catch(() => {});
   };
   efek.onended = putarSuara;
-  efek.play().catch(() => { bunyi(ok); setTimeout(putarSuara, 400); });
+  efek.play()
+    .then(() => setTimeout(putarSuara, ok ? 650 : 380)) // suara mulai saat efek mereda
+    .catch(() => { bunyi(ok); setTimeout(putarSuara, 300); });
 }
 
 // ---------- bunyi cadangan (beep) ----------
@@ -152,7 +156,7 @@ async function prosesKode(teks) {
 
     const label = hasil.k ? `${hasil.k.nomor} – milik ${hasil.k.pemilik}` : "";
     if (hasil.jenis === "KELUAR") {
-      putar("disetujui"); tampil("hijau", "✔", "IZIN KELUAR DISETUJUI", label, 4500);
+      putar("disetujui"); tampil("hijau", "✔", "IZIN KELUAR DISETUJUI", label, 3500);
     } else if (hasil.jenis === "DITOLAK") {
       putar("belumAktif"); tampil("merah", "✖", "IZIN BELUM AKTIF",
         `Kartu sudah terpakai.\nAktif lagi: ${fmtWaktu(hasil.aktifLagi)}\n${label}`, 5500);
