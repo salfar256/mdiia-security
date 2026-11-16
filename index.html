@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta name="theme-color" content="#003a46">
+<meta name="apple-mobile-web-app-title" content="MDIIA Security">
+<title>MDIIA Security</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+  body { background: #003a46; color: #fff; }
+  #app { min-height: 100vh; display: flex; flex-direction: column; }
+  .judul { text-align: center; font-size: 26px; font-weight: 800; padding: 18px 10px 6px; }
+  .sub { text-align: center; font-size: 18px; opacity: .8; margin-bottom: 10px; }
+  #kamera { width: 100%; max-width: 520px; margin: 0 auto; border-radius: 16px; overflow: hidden; background: #000; }
+  #mulai { margin: 30px auto; max-width: 520px; width: 90%; padding: 40px; font-size: 32px; }
+  #sinyal { text-align: center; padding: 10px; font-size: 15px; }
+  #hasil { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; text-align: center; padding: 24px; z-index: 10; }
+  #hasil.hijau { background: #1e9e4a; }
+  #hasil.merah { background: #c62828; }
+  #hasil.kuning { background: #e0a100; color: #1b1b1b; }
+  #hasil .ikon { font-size: 120px; line-height: 1; }
+  #hasil .besar { font-size: 44px; font-weight: 900; margin: 16px 0; }
+  #hasil .kecil { font-size: 24px; white-space: pre-line; }
+  #keluar-akun { background: none; border: 0; color: #fff8; margin: 20px auto; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="login"></div>
+
+<div id="app" hidden>
+  <img src="logo.png" alt="" style="width:84px;height:84px;border-radius:20px;margin:18px auto 0;display:block">
+  <div class="judul">MDIIA SECURITY</div>
+  <div class="sub">Arahkan kartu izin ke kamera</div>
+  <button id="mulai" class="btn">▶ MULAI</button>
+  <div id="kamera"></div>
+  <div id="sinyal"></div>
+  <button id="keluar-akun">keluar akun</button>
+</div>
+
+<div id="hasil" hidden>
+  <div class="ikon" id="h-ikon"></div>
+  <div class="besar" id="h-besar"></div>
+  <div class="kecil" id="h-kecil"></div>
+</div>
+
+<script type="module">
+import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun } from "./js/common.js";
+import { doc, collection, runTransaction, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const $ = (id) => document.getElementById(id);
+let scanner = null, sibuk = false, kodeTerakhir = "", waktuTerakhir = 0, audio = null;
+
+// ---------- suara & getar ----------
+function bunyi(ok) {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const nada = ok ? [880, 1320] : [220, 220, 220];
+    nada.forEach((f, i) => {
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.frequency.value = f; o.type = ok ? "sine" : "square";
+      g.gain.value = 0.3; o.connect(g); g.connect(audio.destination);
+      const t = audio.currentTime + i * (ok ? 0.15 : 0.25);
+      o.start(t); o.stop(t + (ok ? 0.14 : 0.2));
+    });
+  } catch (e) {}
+  if (navigator.vibrate) navigator.vibrate(ok ? 150 : [300, 100, 300]);
+}
+
+function tampil(warna, ikon, besar, kecil, lama = 4000) {
+  const h = $("hasil");
+  h.className = warna; $("h-ikon").textContent = ikon;
+  $("h-besar").textContent = besar; $("h-kecil").textContent = kecil || "";
+  h.hidden = false;
+  setTimeout(() => { h.hidden = true; sibuk = false; }, lama);
+}
+
+// ---------- proses satu pindaian ----------
+async function prosesKode(teks) {
+  const now = Date.now();
+  // abaikan kartu yang sama dalam 8 detik (supaya tidak terbaca dua kali)
+  if (sibuk || (teks === kodeTerakhir && now - waktuTerakhir < 8000)) return;
+  kodeTerakhir = teks; waktuTerakhir = now; sibuk = true;
+
+  if (!teks.startsWith("IZIN:")) {
+    bunyi(false); return tampil("merah", "✖", "BUKAN KARTU IZIN", "");
+  }
+  const id = teks.slice(5).trim();
+  try {
+    const hasil = await runTransaction(db, async (tx) => {
+      const ref = doc(db, "kartu", id);
+      const s = await tx.get(ref);
+      if (!s.exists()) return { jenis: "TIDAK_DIKENAL" };
+      const k = s.data();
+      const st = statusKartu(k);
+      const logRef = doc(collection(db, "log"));
+      const dasar = { kartuId: id, pemilik: k.pemilik, nomor: k.nomor, waktu: serverTimestamp(), oleh: emailSaya() };
+      if (st.siap) {
+        tx.update(ref, { terakhirDipakai: serverTimestamp() });
+        tx.set(logRef, { ...dasar, aksi: "KELUAR" });
+        return { jenis: "KELUAR", k };
+      }
+      tx.set(logRef, { ...dasar, aksi: "DITOLAK" });
+      return { jenis: st.blokir ? "BLOKIR" : "DITOLAK", k, aktifLagi: st.aktifLagi };
+    });
+
+    const label = hasil.k ? `${hasil.k.nomor} – milik ${hasil.k.pemilik}` : "";
+    if (hasil.jenis === "KELUAR") {
+      bunyi(true); tampil("hijau", "✔", "BOLEH KELUAR", label);
+    } else if (hasil.jenis === "DITOLAK") {
+      bunyi(false); tampil("merah", "✖", "TIDAK BOLEH",
+        `Kartu sudah terpakai.\nAktif lagi: ${fmtWaktu(hasil.aktifLagi)}\n${label}`, 5000);
+    } else if (hasil.jenis === "BLOKIR") {
+      bunyi(false); tampil("merah", "✖", "KARTU DIBLOKIR", label, 5000);
+    } else {
+      bunyi(false); tampil("merah", "✖", "KARTU TIDAK DIKENAL", "");
+    }
+  } catch (e) {
+    console.error(e);
+    bunyi(false);
+    if (e.code === "permission-denied") tampil("merah", "✖", "TIDAK BOLEH", "Kartu belum aktif.", 5000);
+    else tampil("kuning", "⚠", "TIDAK ADA SINYAL", "Coba pindai lagi.", 3000);
+  }
+}
+
+// ---------- kamera ----------
+async function mulaiKamera() {
+  $("mulai").hidden = true;
+  bunyi(true); // membuka izin suara di browser
+  try { await navigator.wakeLock?.request("screen"); } catch (e) {}
+  scanner = new Html5Qrcode("kamera");
+  try {
+    await scanner.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, prosesKode, () => {});
+  } catch (e) {
+    $("mulai").hidden = false;
+    alert("Kamera tidak bisa dibuka. Izinkan akses kamera lalu tekan MULAI lagi.");
+  }
+}
+
+function cekSinyal() {
+  $("sinyal").textContent = navigator.onLine ? "🟢 Online" : "🔴 Tidak ada internet";
+}
+addEventListener("online", cekSinyal); addEventListener("offline", cekSinyal);
+document.addEventListener("visibilitychange", async () => {
+  if (document.visibilityState === "visible" && scanner) { try { await navigator.wakeLock?.request("screen"); } catch (e) {} }
+});
+
+pasangLogin({
+  peranDiizinkan: ["satpam"],
+  judul: "MDIIA Security",
+  onMasuk: () => { cekSinyal(); $("mulai").onclick = mulaiKamera; },
+});
+$("keluar-akun").onclick = () => { if (confirm("Keluar dari akun satpam?")) keluarAkun(); };
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>

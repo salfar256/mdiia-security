@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#1f7a3f">
+<title>MDIIA Security – Pengasuh</title>
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .kartu { padding: 22px; margin-bottom: 14px; }
+  .kartu .nomor { font-size: 26px; font-weight: 800; }
+  .kartu .status { font-size: 20px; margin: 8px 0 14px; }
+</style>
+</head>
+<body>
+<div id="login"></div>
+<div id="app" hidden class="wrap" style="max-width:520px">
+  <div class="top">
+    <h2 id="sapaan" style="margin:8px 0"></h2>
+    <button class="btn abu kecil" id="keluar">Keluar akun</button>
+  </div>
+  <div id="daftar"></div>
+  <p style="opacity:.7;font-size:14px">Kartu yang sudah terpakai akan terisi sendiri setelah 12 jam.
+    Tekan ISI ULANG hanya jika ada keperluan mendesak.</p>
+
+  <div class="card">
+    <div class="top">
+      <h3 style="margin:0">Log Izin</h3>
+      <select id="f-log">
+        <option value="semua">Semua kartu</option>
+        <option value="saya">Kartu saya</option>
+      </select>
+    </div>
+    <div style="overflow-x:auto;margin-top:8px">
+      <table><thead><tr><th>Waktu</th><th>Kartu</th><th>Aksi</th></tr></thead>
+      <tbody id="log"></tbody></table>
+    </div>
+    <p style="opacity:.6;font-size:13px">Menampilkan 100 catatan terakhir.</p>
+  </div>
+</div>
+
+<script type="module">
+import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc } from "./js/common.js";
+import { collection, query, where, onSnapshot, doc, runTransaction, serverTimestamp, orderBy, limit }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const $ = (id) => document.getElementById(id);
+let kartuSaya = [];
+
+function gambar() {
+  if (!kartuSaya.length) { $("daftar").innerHTML = `<div class="card">Belum ada kartu atas nama Anda.</div>`; return; }
+  $("daftar").innerHTML = kartuSaya.map((k) => {
+    const st = statusKartu(k);
+    const kelas = st.blokir ? "blokir" : st.siap ? "siap" : "jeda";
+    const teks = st.blokir ? "⛔ Diblokir admin"
+      : st.siap ? "✅ SIAP DIPAKAI"
+      : `⏳ Terpakai — aktif lagi ${fmtWaktu(st.aktifLagi)}`;
+    return `<div class="kartu ${kelas}">
+      <div class="nomor">${esc(k.nomor)}</div>
+      <div class="status">${teks}</div>
+      ${!st.siap && !st.blokir ? `<button class="btn besar" data-id="${k.id}">ISI ULANG</button>` : ""}
+    </div>`;
+  }).join("");
+  $("daftar").querySelectorAll("button[data-id]").forEach((b) => b.onclick = () => isiUlang(b.dataset.id));
+}
+
+let semuaLog = [];
+function gambarLog() {
+  const saja = $("f-log").value === "saya";
+  const nama = kartuSaya[0]?.pemilik;
+  const data = semuaLog.filter((l) => !saja || l.pemilik === nama);
+  $("log").innerHTML = data.map((l) => `<tr>
+    <td>${fmtWaktu(l.waktu?.toMillis())}</td>
+    <td>${esc(l.nomor)} – ${esc(l.pemilik)}</td>
+    <td><span class="tag ${esc(l.aksi)}">${esc(l.aksi.replace("_", " "))}</span></td></tr>`).join("")
+    || `<tr><td colspan="3">Belum ada catatan.</td></tr>`;
+}
+
+async function isiUlang(id) {
+  if (!confirm("Isi ulang kartu ini? Kartu bisa dipakai keluar 1 kali lagi.")) return;
+  try {
+    await runTransaction(db, async (tx) => {
+      const ref = doc(db, "kartu", id);
+      const s = await tx.get(ref);
+      const k = s.data();
+      tx.update(ref, { terakhirDipakai: null });
+      tx.set(doc(collection(db, "log")), {
+        kartuId: id, pemilik: k.pemilik, nomor: k.nomor, aksi: "ISI_ULANG",
+        waktu: serverTimestamp(), oleh: emailSaya(),
+      });
+    });
+  } catch (e) { alert("Gagal. Periksa internet lalu coba lagi."); }
+}
+
+pasangLogin({
+  peranDiizinkan: ["pengasuh"],
+  judul: "MDIIA Security – Pengasuh",
+  onMasuk: (user, peran) => {
+    $("sapaan").textContent = peran.nama || "Kartu Saya";
+    const q = query(collection(db, "kartu"), where("pemilikEmail", "==", emailSaya()));
+    onSnapshot(q, (snap) => {
+      kartuSaya = snap.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) }))
+        .sort((a, b) => String(a.nomor).localeCompare(String(b.nomor)));
+      gambar();
+    });
+    onSnapshot(query(collection(db, "log"), orderBy("waktu", "desc"), limit(100)), (snap) => {
+      semuaLog = snap.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) }));
+      gambarLog();
+    });
+    $("f-log").onchange = gambarLog;
+    setInterval(gambar, 60000); // perbarui hitungan waktu tiap menit
+  },
+});
+$("keluar").onclick = keluarAkun;
+</script>
+</body>
+</html>

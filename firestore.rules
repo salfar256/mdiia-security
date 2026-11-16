@@ -1,0 +1,56 @@
+rules_version = '2';
+// ==========================================================
+//  Aturan keamanan Kartu Izin
+//  GANTI "salimfaroghy@gmail.com" dengan email admin (huruf kecil)
+//  Angka 12 (jam) harus sama dengan JEDA_JAM di firebase-config.js
+// ==========================================================
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function masuk()  { return request.auth != null && request.auth.token.email != null; }
+    function email()  { return request.auth.token.email.lower(); }
+    function jalurPeran() { return /databases/$(database)/documents/peran/$(email()); }
+    function punyaPeran(r) { return masuk() && exists(jalurPeran()) && get(jalurPeran()).data.role == r; }
+    function isAdmin()    { return masuk() && (email() == 'salimfaroghy@gmail.com' || punyaPeran('admin')); }
+    function isSatpam()   { return punyaPeran('satpam'); }
+    function isPengasuh() { return punyaPeran('pengasuh'); }
+    function hanyaUbah(daftar) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(daftar);
+    }
+
+    // Daftar akun & peran (kunci = email)
+    match /peran/{em} {
+      allow read: if isAdmin() || (masuk() && em == email());
+      allow write: if isAdmin();
+    }
+
+    // Kartu izin
+    match /kartu/{id} {
+      allow read: if isAdmin() || isSatpam() || isPengasuh();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        // Satpam: hanya boleh menandai kartu terpakai, dan hanya jika jatahnya ada
+        || (isSatpam()
+            && hanyaUbah(['terakhirDipakai'])
+            && request.resource.data.terakhirDipakai == request.time
+            && resource.data.get('aktif', true) == true
+            && (resource.data.get('terakhirDipakai', null) == null
+                || request.time >= resource.data.terakhirDipakai + duration.value(12, 'h')))
+        // Pengasuh: hanya boleh mengisi ulang kartu miliknya sendiri (jatah maks 1)
+        || (isPengasuh()
+            && resource.data.pemilikEmail == email()
+            && hanyaUbah(['terakhirDipakai'])
+            && request.resource.data.terakhirDipakai == null);
+    }
+
+    // Log: bisa dibaca admin dan semua pengasuh; tidak bisa diubah/dihapus siapa pun
+    match /log/{id} {
+      allow read: if isAdmin() || isPengasuh();
+      allow create: if (isSatpam() || isPengasuh() || isAdmin())
+        && request.resource.data.waktu == request.time
+        && request.resource.data.oleh == email()
+        && request.resource.data.aksi in ['KELUAR', 'DITOLAK', 'ISI_ULANG', 'BLOKIR', 'BUKA_BLOKIR'];
+      allow update, delete: if false;
+    }
+  }
+}

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MDIIA Security – Admin</title>
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="login"></div>
+<div id="app" hidden class="wrap">
+  <div class="top">
+    <h2 style="margin:8px 0">MDIIA Security – Admin</h2>
+    <div>
+      <a class="btn abu kecil" href="cetak.html" target="_blank" style="text-decoration:none">🖨 Cetak Kartu</a>
+      <button class="btn abu kecil" id="keluar">Keluar akun</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">Status Kartu</h3>
+    <div class="grid" id="kartu"></div>
+  </div>
+
+  <div class="card">
+    <div class="top">
+      <h3 style="margin:0">Log Izin</h3>
+      <div>
+        <input type="date" id="tgl">
+        <select id="f-pemilik"><option value="">Semua pemilik</option></select>
+        <select id="f-aksi">
+          <option value="">Semua</option><option>KELUAR</option><option>DITOLAK</option><option>ISI_ULANG</option>
+        </select>
+        <button class="btn kecil" id="csv">⬇ CSV</button>
+      </div>
+    </div>
+    <p id="ringkas" style="opacity:.75"></p>
+    <div style="overflow-x:auto">
+      <table><thead><tr><th>Waktu</th><th>Kartu</th><th>Pemilik</th><th>Aksi</th><th>Oleh</th></tr></thead>
+      <tbody id="log"></tbody></table>
+    </div>
+  </div>
+
+  <details class="card">
+    <summary><b>⚙ Pengaturan Awal (akun & kartu)</b></summary>
+    <p>Buat dulu akunnya di Firebase Console → Authentication → Add user. Lalu isi daftar di bawah
+      (satu baris per orang) dan tekan Simpan.<br>
+      Format pengasuh: <code>Nama | email | IZIN:kode kartu 1 | IZIN:kode kartu 2</code>.
+      Salin dari file <b>PENGATURAN-AWAL-RAHASIA.txt</b> supaya kode sama dengan kartu yang sudah dicetak.
+      Kalau kode dikosongkan, aplikasi membuat kode acak baru.
+      Kartu hanya dibuat untuk pengasuh yang belum punya kartu.</p>
+    <p><b>Pengasuh</b></p>
+    <textarea id="s-pengasuh" placeholder="Tempel isi dari PENGATURAN-AWAL-RAHASIA.txt di sini"></textarea>
+    <p><b>Satpam</b> (boleh lebih dari satu HP/akun)</p>
+    <textarea id="s-satpam" style="min-height:60px">Pos Satpam | satpam@contoh.com</textarea>
+    <p><b>Jumlah kartu per pengasuh:</b> <input id="s-jumlah" type="number" value="2" min="1" max="5" style="width:70px"></p>
+    <button class="btn" id="s-simpan">Simpan & Buat Kartu</button>
+    <p id="s-msg"></p>
+  </details>
+</div>
+
+<script type="module">
+import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc } from "./js/common.js";
+import {
+  collection, query, orderBy, limit, where, onSnapshot, doc, runTransaction, serverTimestamp,
+  setDoc, getDocs, writeBatch, Timestamp,
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const $ = (id) => document.getElementById(id);
+let semuaKartu = [], semuaLog = [], stopLog = null;
+
+// ---------- status kartu ----------
+function gambarKartu() {
+  $("kartu").innerHTML = semuaKartu.map((k) => {
+    const st = statusKartu(k);
+    const kelas = st.blokir ? "blokir" : st.siap ? "siap" : "jeda";
+    const teks = st.blokir ? "⛔ Diblokir" : st.siap ? "✅ Siap" : `⏳ Aktif lagi ${fmtWaktu(st.aktifLagi)}`;
+    return `<div class="kartu ${kelas}">
+      <div class="nama">${esc(k.nomor)} – ${esc(k.pemilik)}</div>
+      <div>${teks}</div>
+      ${!st.siap && !st.blokir ? `<button class="btn kecil" data-isi="${k.id}">Isi ulang</button>` : ""}
+      <button class="btn kecil ${st.blokir ? "" : "merah"}" data-blokir="${k.id}">${st.blokir ? "Buka blokir" : "Blokir (hilang)"}</button>
+    </div>`;
+  }).join("") || "<p>Belum ada kartu. Buka Pengaturan Awal di bawah.</p>";
+  $("kartu").querySelectorAll("[data-isi]").forEach((b) => b.onclick = () => ubahKartu(b.dataset.isi, "ISI_ULANG"));
+  $("kartu").querySelectorAll("[data-blokir]").forEach((b) => b.onclick = () => ubahKartu(b.dataset.blokir, "BLOKIR"));
+
+  const pilih = $("f-pemilik"), nilai = pilih.value;
+  const nama = [...new Set(semuaKartu.map((k) => k.pemilik))];
+  pilih.innerHTML = `<option value="">Semua pemilik</option>` + nama.map((n) => `<option>${esc(n)}</option>`).join("");
+  pilih.value = nilai;
+}
+
+async function ubahKartu(id, jenis) {
+  const k = semuaKartu.find((x) => x.id === id);
+  let aksi, data;
+  if (jenis === "ISI_ULANG") { aksi = "ISI_ULANG"; data = { terakhirDipakai: null }; }
+  else if (k.aktif === false) { aksi = "BUKA_BLOKIR"; data = { aktif: true }; }
+  else {
+    if (!confirm(`Blokir ${k.nomor} milik ${k.pemilik}? Kartu ini tidak akan bisa dipakai.`)) return;
+    aksi = "BLOKIR"; data = { aktif: false };
+  }
+  try {
+    await runTransaction(db, async (tx) => {
+      tx.update(doc(db, "kartu", id), data);
+      tx.set(doc(collection(db, "log")), {
+        kartuId: id, pemilik: k.pemilik, nomor: k.nomor, aksi, waktu: serverTimestamp(), oleh: emailSaya(),
+      });
+    });
+  } catch (e) { alert("Gagal: " + e.message); }
+}
+
+// ---------- log ----------
+function pasangLog() {
+  if (stopLog) stopLog();
+  const tgl = $("tgl").value;
+  let q;
+  if (tgl) {
+    const awal = new Date(tgl + "T00:00:00+07:00"), akhir = new Date(awal.getTime() + 86400000);
+    q = query(collection(db, "log"), where("waktu", ">=", Timestamp.fromDate(awal)),
+      where("waktu", "<", Timestamp.fromDate(akhir)), orderBy("waktu", "desc"));
+  } else {
+    q = query(collection(db, "log"), orderBy("waktu", "desc"), limit(300));
+  }
+  stopLog = onSnapshot(q, (snap) => {
+    semuaLog = snap.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) }));
+    gambarLog();
+  }, (e) => { $("log").innerHTML = `<tr><td colspan="5">Gagal memuat log: ${esc(e.message)}</td></tr>`; });
+}
+
+function logTersaring() {
+  const p = $("f-pemilik").value, a = $("f-aksi").value;
+  return semuaLog.filter((l) => (!p || l.pemilik === p) && (!a || l.aksi === a));
+}
+
+function gambarLog() {
+  const data = logTersaring();
+  const hit = (x) => data.filter((l) => l.aksi === x).length;
+  $("ringkas").textContent = `${data.length} catatan · Keluar ${hit("KELUAR")} · Ditolak ${hit("DITOLAK")} · Isi ulang ${hit("ISI_ULANG")}`
+    + ($("tgl").value ? "" : " (300 terakhir)");
+  $("log").innerHTML = data.map((l) => `<tr>
+    <td>${fmtWaktu(l.waktu?.toMillis())}</td><td>${esc(l.nomor)}</td><td>${esc(l.pemilik)}</td>
+    <td><span class="tag ${esc(l.aksi)}">${esc(l.aksi.replace("_", " "))}</span></td><td>${esc(l.oleh)}</td></tr>`).join("")
+    || `<tr><td colspan="5">Belum ada catatan.</td></tr>`;
+}
+
+function unduhCSV() {
+  const baris = [["Waktu", "Kartu", "Pemilik", "Aksi", "Oleh"]].concat(
+    logTersaring().map((l) => [fmtWaktu(l.waktu?.toMillis()), l.nomor, l.pemilik, l.aksi, l.oleh]));
+  const csv = baris.map((r) => r.map((c) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
+  a.download = `log-izin-${$("tgl").value || "terbaru"}.csv`; a.click();
+}
+
+// ---------- pengaturan awal ----------
+const urai = (teks) => teks.split("\n").map((b) => b.split("|").map((s) => s.trim()))
+  .filter((r) => r.length >= 2 && r[0] && r[1].includes("@"))
+  .map(([nama, email, ...kode]) => ({
+    nama, email: email.toLowerCase(),
+    kode: kode.map((k) => k.replace(/^IZIN:/i, "").trim().toUpperCase()).filter((k) => /^[A-Z0-9]{8,}$/.test(k)),
+  }));
+
+function idAcak() {
+  const huruf = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789", a = new Uint8Array(16);
+  crypto.getRandomValues(a);
+  return [...a].map((x) => huruf[x % huruf.length]).join("");
+}
+
+async function simpanPengaturan() {
+  const pengasuh = urai($("s-pengasuh").value), satpam = urai($("s-satpam").value);
+  const jumlah = Math.max(1, Math.min(5, parseInt($("s-jumlah").value) || 2));
+  if (pengasuh.some((p) => p.email.endsWith("@contoh.com")) || satpam.some((p) => p.email.endsWith("@contoh.com"))) {
+    if (!confirm("Masih ada email contoh (@contoh.com). Tetap lanjut?")) return;
+  }
+  $("s-msg").textContent = "Menyimpan…";
+  try {
+    const batch = writeBatch(db);
+    pengasuh.forEach((p) => batch.set(doc(db, "peran", p.email), { role: "pengasuh", nama: p.nama }));
+    satpam.forEach((p) => batch.set(doc(db, "peran", p.email), { role: "satpam", nama: p.nama }));
+    batch.set(doc(db, "peran", emailSaya()), { role: "admin", nama: "Admin" });
+
+    const ada = await getDocs(collection(db, "kartu"));
+    const sudahPunya = new Set(ada.docs.map((d) => d.data().pemilikEmail));
+    let dibuat = 0;
+    const idAda = new Set(ada.docs.map((d) => d.id));
+    pengasuh.filter((p) => !sudahPunya.has(p.email)).forEach((p) => {
+      // Pakai kode QR dari kartu yang sudah dicetak; jika kosong, buat kode acak
+      const daftarId = p.kode.length ? p.kode : Array.from({ length: jumlah }, idAcak);
+      daftarId.forEach((kid, idx) => {
+        if (idAda.has(kid)) return;
+        const i = idx + 1;
+        batch.set(doc(db, "kartu", kid), {
+          nomor: `Kartu ${i}`, pemilik: p.nama, pemilikEmail: p.email, terakhirDipakai: null, aktif: true,
+        });
+        dibuat++;
+      });
+    });
+    await batch.commit();
+    $("s-msg").textContent = `✅ Tersimpan. ${dibuat} kartu baru dibuat. Lanjut ke Cetak Kartu.`;
+  } catch (e) { $("s-msg").textContent = "Gagal: " + e.message; }
+}
+
+pasangLogin({
+  peranDiizinkan: ["admin"],
+  judul: "MDIIA Security – Admin",
+  onMasuk: () => {
+    onSnapshot(collection(db, "kartu"), (snap) => {
+      semuaKartu = snap.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) }))
+        .sort((a, b) => (a.pemilik + a.nomor).localeCompare(b.pemilik + b.nomor));
+      gambarKartu();
+    });
+    pasangLog();
+    setInterval(gambarKartu, 60000);
+  },
+});
+$("tgl").onchange = pasangLog;
+$("f-pemilik").onchange = gambarLog;
+$("f-aksi").onchange = gambarLog;
+$("csv").onclick = unduhCSV;
+$("s-simpan").onclick = simpanPengaturan;
+$("keluar").onclick = keluarAkun;
+</script>
+</body>
+</html>
