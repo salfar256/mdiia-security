@@ -63,14 +63,14 @@ const $ = (id) => document.getElementById(id);
 let scanner = null, sibuk = false, kodeTerakhir = "", waktuTerakhir = 0, audio = null;
 
 // ---------- suara notifikasi ----------
-const EFEK = { benar: new Audio("suara/efek-benar.mp3"), salah: new Audio("suara/efek-salah.mp3") };
+const EFEK = { benar: new Audio("suara/efek-benar.mp3?v=2"), salah: new Audio("suara/efek-salah.mp3?v=2") };
 const SUARA = {
-  disetujui: new Audio("suara/izin-disetujui.mp3"),
-  belumAktif: new Audio("suara/izin-belum-aktif.mp3"),
-  tidakTerdaftar: new Audio("suara/kartu-tidak-terdaftar.mp3"),
+  disetujui: new Audio("suara/izin-disetujui.mp3?v=2"),
+  belumAktif: new Audio("suara/izin-belum-aktif.mp3?v=2"),
+  tidakTerdaftar: new Audio("suara/kartu-tidak-terdaftar.mp3?v=2"),
 };
 const SEMUA_AUDIO = [...Object.values(EFEK), ...Object.values(SUARA)];
-SEMUA_AUDIO.forEach((a) => { a.preload = "auto"; });
+SEMUA_AUDIO.forEach((a) => { a.preload = "auto"; a.volume = 1; }); // volume maksimal
 
 // Browser HP hanya mengizinkan suara setelah ada sentuhan: buka kuncinya saat MULAI ditekan
 function bukaKunciSuara() {
