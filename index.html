@@ -159,6 +159,10 @@ pasangLogin({
   peranDiizinkan: ["satpam"],
   judul: "MDIIA Security",
   onMasuk: (user, peran) => {
+    // Admin langsung ke halaman admin, kecuali sengaja membuka mode satpam (?satpam)
+    if (peran.role === "admin" && !new URLSearchParams(location.search).has("satpam")) {
+      location.replace("admin.html"); return;
+    }
     cekSinyal(); $("mulai").onclick = mulaiKamera;
     $("admin-bar").hidden = peran.role !== "admin";
   },
