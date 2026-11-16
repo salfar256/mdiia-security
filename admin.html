@@ -14,6 +14,7 @@
   <div class="top">
     <h2 style="margin:8px 0">MDIIA Security – Admin</h2>
     <div>
+      <button class="btn kecil" id="buka-setup">⚙ Pengaturan Awal</button>
       <a class="btn abu kecil" href="cetak.html" target="_blank" style="text-decoration:none">🖨 Cetak Kartu</a>
       <button class="btn abu kecil" id="keluar">Keluar akun</button>
     </div>
@@ -43,7 +44,7 @@
     </div>
   </div>
 
-  <details class="card">
+  <details class="card" id="setup">
     <summary><b>⚙ Pengaturan Awal (akun & kartu)</b></summary>
     <p>Buat dulu akunnya di Firebase Console → Authentication → Add user. Lalu isi daftar di bawah
       (satu baris per orang) dan tekan Simpan.<br>
@@ -83,7 +84,9 @@ function gambarKartu() {
       ${!st.siap && !st.blokir ? `<button class="btn kecil" data-isi="${k.id}">Isi ulang</button>` : ""}
       <button class="btn kecil ${st.blokir ? "" : "merah"}" data-blokir="${k.id}">${st.blokir ? "Buka blokir" : "Blokir (hilang)"}</button>
     </div>`;
-  }).join("") || "<p>Belum ada kartu. Buka Pengaturan Awal di bawah.</p>";
+  }).join("") || `<p>Belum ada kartu. <button class="btn kecil" id="ke-setup">⚙ Buka Pengaturan Awal</button></p>`;
+  const ke = $("ke-setup"); if (ke) ke.onclick = bukaSetup;
+  if (!semuaKartu.length) $("setup").open = true;
   $("kartu").querySelectorAll("[data-isi]").forEach((b) => b.onclick = () => ubahKartu(b.dataset.isi, "ISI_ULANG"));
   $("kartu").querySelectorAll("[data-blokir]").forEach((b) => b.onclick = () => ubahKartu(b.dataset.blokir, "BLOKIR"));
 
@@ -221,6 +224,12 @@ $("f-pemilik").onchange = gambarLog;
 $("f-aksi").onchange = gambarLog;
 $("csv").onclick = unduhCSV;
 $("s-simpan").onclick = simpanPengaturan;
+function bukaSetup() {
+  const d = $("setup"); d.open = true;
+  d.scrollIntoView({ behavior: "smooth", block: "start" });
+  d.classList.add("sorot"); setTimeout(() => d.classList.remove("sorot"), 2000);
+}
+$("buka-setup").onclick = bukaSetup;
 $("keluar").onclick = keluarAkun;
 </script>
 </body>

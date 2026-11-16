@@ -33,3 +33,8 @@ th, td { text-align: left; padding: 8px; border-bottom: 1px solid #e3e8e5; }
 .tag.BLOKIR, .tag.BUKA_BLOKIR { background: #e5e5e5; color: #333; }
 textarea, input[type=date], select { font-size: 15px; padding: 8px; border-radius: 8px; border: 1px solid #ccd5cf; }
 textarea { width: 100%; min-height: 140px; font-family: monospace; }
+.pass-wrap { position: relative; }
+.pass-wrap input { padding-right: 56px; }
+.mata { position: absolute; right: 6px; top: 6px; height: 40px; width: 44px; border: 0; background: none;
+  font-size: 22px; cursor: pointer; }
+.sorot { outline: 3px solid #e0a100; outline-offset: 4px; }

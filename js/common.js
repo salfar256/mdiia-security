@@ -42,11 +42,22 @@ export function pasangLogin({ peranDiizinkan, judul, onMasuk }) {
       <img src="logo.png" alt="" style="width:96px;height:96px;border-radius:22px;display:block;margin:0 auto 12px">
       <h1>${esc(judul)}</h1>
       <input id="lg-email" type="email" placeholder="Email" autocomplete="username">
-      <input id="lg-pass" type="password" placeholder="Kata sandi" autocomplete="current-password">
+      <div class="pass-wrap">
+        <input id="lg-pass" type="password" placeholder="Kata sandi" autocomplete="current-password">
+        <button type="button" id="lg-mata" class="mata" aria-label="Tampilkan kata sandi">👁</button>
+      </div>
       <button id="lg-btn" class="btn besar">MASUK</button>
       <p id="lg-msg" class="pesan"></p>
     </div>`;
   const msg = box.querySelector("#lg-msg");
+  const pass = box.querySelector("#lg-pass"), mata = box.querySelector("#lg-mata");
+  mata.onclick = () => {
+    const lihat = pass.type === "password";
+    pass.type = lihat ? "text" : "password";
+    mata.textContent = lihat ? "🙈" : "👁";
+    mata.setAttribute("aria-label", lihat ? "Sembunyikan kata sandi" : "Tampilkan kata sandi");
+  };
+  pass.onkeydown = (e) => { if (e.key === "Enter") box.querySelector("#lg-btn").click(); };
   box.querySelector("#lg-btn").onclick = async () => {
     msg.textContent = "Memproses…";
     try {
