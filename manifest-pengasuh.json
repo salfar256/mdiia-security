@@ -1,6 +1,6 @@
 {
-  "name": "MDIIA Security – Pengasuh",
-  "short_name": "MDIIA Pengasuh",
+  "name": "MDIIA Security",
+  "short_name": "MDIIA Security",
   "start_url": "./pengasuh.html",
   "scope": "./",
   "display": "standalone",

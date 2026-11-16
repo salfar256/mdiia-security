@@ -12,12 +12,15 @@ export const JEDA_MS = JEDA_JAM * 3600 * 1000;
 
 export const emailSaya = () => (auth.currentUser?.email || "").toLowerCase();
 
-// Format waktu WIB, contoh: "16 Nov 14.05"
+// Format waktu WIB, contoh: "Sen, 16 Nov 14.05"
 export function fmtWaktu(ms, denganTanggal = true) {
   if (!ms) return "-";
-  const opsi = { timeZone: "Asia/Jakarta", hour: "2-digit", minute: "2-digit" };
-  if (denganTanggal) { opsi.day = "numeric"; opsi.month = "short"; }
-  return new Date(ms).toLocaleString("id-ID", opsi);
+  const d = new Date(ms), z = { timeZone: "Asia/Jakarta" };
+  const jam = d.toLocaleTimeString("id-ID", { ...z, hour: "2-digit", minute: "2-digit" });
+  if (!denganTanggal) return jam;
+  const hari = d.toLocaleDateString("id-ID", { ...z, weekday: "short" });
+  const tgl = d.toLocaleDateString("id-ID", { ...z, day: "numeric", month: "short" });
+  return `${hari}, ${tgl} ${jam}`; // contoh: "Sen, 16 Nov 14.05"
 }
 
 // Status kartu: siap dipakai atau masih jeda

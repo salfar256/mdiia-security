@@ -11,41 +11,38 @@
 </head>
 <body>
 <div id="login"></div>
-<div id="app" hidden class="wrap">
-  <div class="top">
-    <h2 style="margin:8px 0">MDIIA Security – Admin</h2>
-    <div>
-      <button class="btn kecil" id="buka-setup">⚙ Pengaturan Awal</button>
-      <a class="btn abu kecil" href="index.html?satpam" style="text-decoration:none">📷 Pos Satpam</a>
-      <a class="btn abu kecil" href="pengasuh.html" style="text-decoration:none">👤 Pengasuh</a>
-      <a class="btn abu kecil" href="cetak.html" target="_blank" style="text-decoration:none">🖨 Cetak Kartu</a>
-      <button class="btn abu kecil" id="keluar">Keluar akun</button>
-    </div>
-  </div>
+<div id="app" hidden class="wrap admin">
+  <header class="adm-head">
+    <img src="logo.png" alt="">
+    <div><div class="adm-judul">MDIIA Security</div><div class="adm-sub">Panel Admin</div></div>
+    <button class="btn abu kecil" id="keluar">Keluar</button>
+  </header>
 
-  <div class="card">
-    <h3 style="margin-top:0">Status Kartu</h3>
-    <div class="grid" id="kartu"></div>
-  </div>
+  <nav class="adm-nav">
+    <button class="btn" id="buka-setup">⚙️<span>Pengaturan Awal</span></button>
+    <a class="btn abu" href="index.html?satpam">📷<span>Pos Satpam</span></a>
+    <a class="btn abu" href="pengasuh.html">👤<span>Pengasuh</span></a>
+    <a class="btn abu" href="cetak.html" target="_blank">🖨️<span>Cetak Kartu</span></a>
+  </nav>
 
-  <div class="card">
-    <div class="top">
-      <h3 style="margin:0">Log Izin</h3>
-      <div>
-        <input type="date" id="tgl">
-        <select id="f-pemilik"><option value="">Semua pemilik</option></select>
-        <select id="f-aksi">
-          <option value="">Semua</option><option>KELUAR</option><option>DITOLAK</option><option>ISI_ULANG</option>
-        </select>
-        <button class="btn kecil" id="csv">⬇ CSV</button>
-      </div>
+  <section class="card">
+    <div class="sek-judul"><h3>Status Kartu</h3><div id="ringkas-kartu" class="chip-baris"></div></div>
+    <div id="kartu" class="daftar-pemilik"></div>
+  </section>
+
+  <section class="card">
+    <div class="sek-judul"><h3>Log Izin</h3><button class="btn kecil abu" id="csv">⬇ CSV</button></div>
+    <div class="filter">
+      <input type="date" id="tgl" aria-label="Tanggal">
+      <select id="f-pemilik"><option value="">Semua pemilik</option></select>
+      <select id="f-aksi">
+        <option value="">Semua aksi</option><option value="KELUAR">Keluar</option>
+        <option value="DITOLAK">Ditolak</option><option value="ISI_ULANG">Isi ulang</option>
+      </select>
     </div>
-    <p id="ringkas" style="opacity:.75"></p>
-    <div style="overflow-x:auto">
-      <table><thead><tr><th>Waktu</th><th>Kartu</th><th>Pemilik</th><th>Aksi</th><th>Oleh</th></tr></thead>
-      <tbody id="log"></tbody></table>
-    </div>
-  </div>
+    <p id="ringkas" class="ringkas"></p>
+    <div id="log" class="daftar-log"></div>
+  </section>
 
   <details class="card" id="setup">
     <summary><b>⚙ Pengaturan Awal (akun & kartu)</b></summary>
@@ -77,17 +74,32 @@ let semuaKartu = [], semuaLog = [], stopLog = null;
 
 // ---------- status kartu ----------
 function gambarKartu() {
-  $("kartu").innerHTML = semuaKartu.map((k) => {
-    const st = statusKartu(k);
-    const kelas = st.blokir ? "blokir" : st.siap ? "siap" : "jeda";
-    const teks = st.blokir ? "⛔ Diblokir" : st.siap ? "✅ Siap" : `⏳ Aktif lagi ${fmtWaktu(st.aktifLagi)}`;
-    return `<div class="kartu ${kelas}">
-      <div class="nama">${esc(k.nomor)} – ${esc(k.pemilik)}</div>
-      <div>${teks}</div>
-      ${!st.siap && !st.blokir ? `<button class="btn kecil" data-isi="${k.id}">Isi ulang</button>` : ""}
-      <button class="btn kecil ${st.blokir ? "" : "merah"}" data-blokir="${k.id}">${st.blokir ? "Buka blokir" : "Blokir (hilang)"}</button>
-    </div>`;
-  }).join("") || `<p>Belum ada kartu. <button class="btn kecil" id="ke-setup">⚙ Buka Pengaturan Awal</button></p>`;
+  const st = semuaKartu.map((k) => ({ k, s: statusKartu(k) }));
+  const n = (f) => st.filter(f).length;
+  $("ringkas-kartu").innerHTML = semuaKartu.length ? `
+    <span class="chip siap">✅ Siap ${n((x) => x.s.siap)}</span>
+    <span class="chip jeda">⏳ Terpakai ${n((x) => !x.s.siap && !x.s.blokir)}</span>
+    ${n((x) => x.s.blokir) ? `<span class="chip blokir">⛔ Blokir ${n((x) => x.s.blokir)}</span>` : ""}` : "";
+
+  const grup = {};
+  st.forEach((x) => (grup[x.k.pemilik] ||= []).push(x));
+  $("kartu").innerHTML = Object.entries(grup).map(([nama, isi]) => `
+    <div class="pemilik">
+      <div class="pemilik-nama">${esc(nama)}</div>
+      ${isi.map(({ k, s }) => {
+        const kelas = s.blokir ? "blokir" : s.siap ? "siap" : "jeda";
+        const teks = s.blokir ? "⛔ Diblokir" : s.siap ? "✅ Siap" : `⏳ Aktif ${fmtWaktu(s.aktifLagi)}`;
+        return `<div class="baris-kartu ${kelas}">
+          <span class="no">${esc(k.nomor)}</span>
+          <span class="st">${teks}</span>
+          <span class="aksi">
+            ${!s.siap && !s.blokir ? `<button class="btn kecil" data-isi="${k.id}">Isi ulang</button>` : ""}
+            <button class="link-kecil" data-blokir="${k.id}">${s.blokir ? "Buka blokir" : "Blokir"}</button>
+          </span>
+        </div>`;
+      }).join("")}
+    </div>`).join("")
+    || `<p>Belum ada kartu. <button class="btn kecil" id="ke-setup">⚙ Buka Pengaturan Awal</button></p>`;
   const ke = $("ke-setup"); if (ke) ke.onclick = bukaSetup;
   if (!semuaKartu.length) $("setup").open = true;
   $("kartu").querySelectorAll("[data-isi]").forEach((b) => b.onclick = () => ubahKartu(b.dataset.isi, "ISI_ULANG"));
@@ -95,7 +107,7 @@ function gambarKartu() {
 
   const pilih = $("f-pemilik"), nilai = pilih.value;
   const nama = [...new Set(semuaKartu.map((k) => k.pemilik))];
-  pilih.innerHTML = `<option value="">Semua pemilik</option>` + nama.map((n) => `<option>${esc(n)}</option>`).join("");
+  pilih.innerHTML = `<option value="">Semua pemilik</option>` + nama.map((x) => `<option>${esc(x)}</option>`).join("");
   pilih.value = nilai;
 }
 
@@ -133,7 +145,7 @@ function pasangLog() {
   stopLog = onSnapshot(q, (snap) => {
     semuaLog = snap.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) }));
     gambarLog();
-  }, (e) => { $("log").innerHTML = `<tr><td colspan="5">Gagal memuat log: ${esc(e.message)}</td></tr>`; });
+  }, (e) => { $("log").innerHTML = `<p class="pesan">Gagal memuat log: ${esc(e.message)}</p>`; });
 }
 
 function logTersaring() {
@@ -141,15 +153,17 @@ function logTersaring() {
   return semuaLog.filter((l) => (!p || l.pemilik === p) && (!a || l.aksi === a));
 }
 
+const LABEL = { KELUAR: "Keluar", DITOLAK: "Ditolak", ISI_ULANG: "Isi ulang", BLOKIR: "Blokir", BUKA_BLOKIR: "Buka blokir" };
 function gambarLog() {
   const data = logTersaring();
   const hit = (x) => data.filter((l) => l.aksi === x).length;
   $("ringkas").textContent = `${data.length} catatan · Keluar ${hit("KELUAR")} · Ditolak ${hit("DITOLAK")} · Isi ulang ${hit("ISI_ULANG")}`
     + ($("tgl").value ? "" : " (300 terakhir)");
-  $("log").innerHTML = data.map((l) => `<tr>
-    <td>${fmtWaktu(l.waktu?.toMillis())}</td><td>${esc(l.nomor)}</td><td>${esc(l.pemilik)}</td>
-    <td><span class="tag ${esc(l.aksi)}">${esc(l.aksi.replace("_", " "))}</span></td><td>${esc(l.oleh)}</td></tr>`).join("")
-    || `<tr><td colspan="5">Belum ada catatan.</td></tr>`;
+  $("log").innerHTML = data.map((l) => `<div class="log-item">
+      <div class="log-atas"><span class="log-waktu">${fmtWaktu(l.waktu?.toMillis())}</span>
+        <span class="tag ${esc(l.aksi)}">${esc(LABEL[l.aksi] || l.aksi)}</span></div>
+      <div class="log-bawah">${esc(l.nomor)} – ${esc(l.pemilik)} <span class="oleh">· ${esc(l.oleh)}</span></div>
+    </div>`).join("") || `<p class="ringkas">Belum ada catatan.</p>`;
 }
 
 function unduhCSV() {

@@ -63,29 +63,38 @@ const $ = (id) => document.getElementById(id);
 let scanner = null, sibuk = false, kodeTerakhir = "", waktuTerakhir = 0, audio = null;
 
 // ---------- suara notifikasi ----------
+const EFEK = { benar: new Audio("suara/efek-benar.mp3"), salah: new Audio("suara/efek-salah.mp3") };
 const SUARA = {
   disetujui: new Audio("suara/izin-disetujui.mp3"),
   belumAktif: new Audio("suara/izin-belum-aktif.mp3"),
   tidakTerdaftar: new Audio("suara/kartu-tidak-terdaftar.mp3"),
 };
-Object.values(SUARA).forEach((a) => { a.preload = "auto"; });
+const SEMUA_AUDIO = [...Object.values(EFEK), ...Object.values(SUARA)];
+SEMUA_AUDIO.forEach((a) => { a.preload = "auto"; });
 
 // Browser HP hanya mengizinkan suara setelah ada sentuhan: buka kuncinya saat MULAI ditekan
 function bukaKunciSuara() {
-  Object.values(SUARA).forEach((a) => {
+  SEMUA_AUDIO.forEach((a) => {
     a.muted = true;
     a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
   });
 }
 
+let urutan = 0;
+// Efek suara dulu (benar/salah), lalu suara keterangan
 function putar(jenis) {
   const ok = jenis === "disetujui";
   if (navigator.vibrate) navigator.vibrate(ok ? 150 : [300, 100, 300]);
-  const a = SUARA[jenis];
-  Object.values(SUARA).forEach((x) => { if (x !== a) { x.pause(); x.currentTime = 0; } });
-  if (!a) return bunyi(ok);
-  a.currentTime = 0;
-  a.play().catch(() => bunyi(ok)); // cadangan: bunyi beep
+  const giliran = ++urutan;
+  SEMUA_AUDIO.forEach((x) => { x.onended = null; x.pause(); x.currentTime = 0; });
+  const efek = ok ? EFEK.benar : EFEK.salah, suara = SUARA[jenis];
+  const putarSuara = () => {
+    if (giliran !== urutan || !suara) return;
+    suara.currentTime = 0;
+    suara.play().catch(() => {});
+  };
+  efek.onended = putarSuara;
+  efek.play().catch(() => { bunyi(ok); setTimeout(putarSuara, 400); });
 }
 
 // ---------- bunyi cadangan (beep) ----------
@@ -120,7 +129,7 @@ async function prosesKode(teks) {
   kodeTerakhir = teks; waktuTerakhir = now; sibuk = true;
 
   if (!teks.startsWith("IZIN:")) {
-    putar("tidakTerdaftar"); return tampil("merah", "✖", "KARTU TIDAK TERDAFTAR", "");
+    putar("tidakTerdaftar"); return tampil("merah", "✖", "KARTU TIDAK TERDAFTAR", "", 4500);
   }
   const id = teks.slice(5).trim();
   try {
@@ -143,19 +152,19 @@ async function prosesKode(teks) {
 
     const label = hasil.k ? `${hasil.k.nomor} – milik ${hasil.k.pemilik}` : "";
     if (hasil.jenis === "KELUAR") {
-      putar("disetujui"); tampil("hijau", "✔", "IZIN KELUAR DISETUJUI", label);
+      putar("disetujui"); tampil("hijau", "✔", "IZIN KELUAR DISETUJUI", label, 4500);
     } else if (hasil.jenis === "DITOLAK") {
       putar("belumAktif"); tampil("merah", "✖", "IZIN BELUM AKTIF",
-        `Kartu sudah terpakai.\nAktif lagi: ${fmtWaktu(hasil.aktifLagi)}\n${label}`, 5000);
+        `Kartu sudah terpakai.\nAktif lagi: ${fmtWaktu(hasil.aktifLagi)}\n${label}`, 5500);
     } else if (hasil.jenis === "BLOKIR") {
-      putar("belumAktif"); tampil("merah", "✖", "KARTU DIBLOKIR", label, 5000);
+      putar("belumAktif"); tampil("merah", "✖", "KARTU DIBLOKIR", label, 5500);
     } else {
-      putar("tidakTerdaftar"); tampil("merah", "✖", "KARTU TIDAK TERDAFTAR", "");
+      putar("tidakTerdaftar"); tampil("merah", "✖", "KARTU TIDAK TERDAFTAR", "", 4500);
     }
   } catch (e) {
     console.error(e);
     if (e.code === "permission-denied") {
-      putar("belumAktif"); tampil("merah", "✖", "IZIN BELUM AKTIF", "Silakan hubungi pengasuh.", 5000);
+      putar("belumAktif"); tampil("merah", "✖", "IZIN BELUM AKTIF", "Silakan hubungi pengasuh.", 5500);
     } else {
       bunyi(false); tampil("kuning", "⚠", "TIDAK ADA SINYAL", "Coba pindai lagi.", 3000);
     }

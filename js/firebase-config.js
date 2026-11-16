@@ -16,8 +16,8 @@ export const firebaseConfig = {
 export const ADMIN_EMAIL = "salimfaroghy@gmail.com";
 
 // 3) Lama jeda sebelum kartu terisi kembali (jam).
-//    PENTING: jika diubah, ubah juga angka 12 di firestore.rules
-export const JEDA_JAM = 12;
+//    PENTING: jika diubah, ubah juga angka 6 di firestore.rules
+export const JEDA_JAM = 6;
 
 // 4) Nama pondok yang tercetak di kartu
 export const NAMA_PONDOK = "Pondok Pesantren Ibnu Aqil";

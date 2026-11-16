@@ -2,7 +2,7 @@ rules_version = '2';
 // ==========================================================
 //  Aturan keamanan Kartu Izin
 //  GANTI "salimfaroghy@gmail.com" dengan email admin (huruf kecil)
-//  Angka 12 (jam) harus sama dengan JEDA_JAM di firebase-config.js
+//  Angka 6 (jam) harus sama dengan JEDA_JAM di firebase-config.js
 // ==========================================================
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -35,7 +35,7 @@ service cloud.firestore {
             && request.resource.data.terakhirDipakai == request.time
             && resource.data.get('aktif', true) == true
             && (resource.data.get('terakhirDipakai', null) == null
-                || request.time >= resource.data.terakhirDipakai + duration.value(12, 'h')))
+                || request.time >= resource.data.terakhirDipakai + duration.value(6, 'h')))
         // Pengasuh: hanya boleh mengisi ulang kartu miliknya sendiri (jatah maks 1)
         || (isPengasuh()
             && resource.data.pemilikEmail == email()
