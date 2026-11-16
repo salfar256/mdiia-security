@@ -99,6 +99,8 @@ pasangLogin({
   judul: "MDIIA Security – Pengasuh",
   onMasuk: (user, peran) => {
     $("sapaan").textContent = peran.nama || "Kartu Saya";
+    if (peran.role === "admin") $("sapaan").insertAdjacentHTML("afterend",
+      '<a class="btn kecil" href="admin.html" style="text-decoration:none">⚙ Admin</a>');
     const q = query(collection(db, "kartu"), where("pemilikEmail", "==", emailSaya()));
     onSnapshot(q, (snap) => {
       kartuSaya = snap.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) }))

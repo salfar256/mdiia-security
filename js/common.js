@@ -74,6 +74,11 @@ export function pasangLogin({ peranDiizinkan, judul, onMasuk }) {
       peran = s.exists() ? s.data() : null;
     } catch (e) { /* abaikan */ }
     if (user.email.toLowerCase() === ADMIN_EMAIL.toLowerCase()) peran = { role: "admin", nama: "Admin" };
+    // Arahkan otomatis ke halaman yang sesuai peran
+    if (peran && !(peranDiizinkan.includes(peran.role) || peran.role === "admin")) {
+      const tujuan = { satpam: "index.html", pengasuh: "pengasuh.html" }[peran.role];
+      if (tujuan) { location.replace(tujuan); return; }
+    }
     if (!peran || !(peranDiizinkan.includes(peran.role) || peran.role === "admin")) {
       box.hidden = false; isi.hidden = true;
       msg.innerHTML = `Akun <b>${esc(user.email)}</b> tidak punya akses ke halaman ini.

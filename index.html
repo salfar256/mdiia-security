@@ -40,6 +40,10 @@
   <button id="mulai" class="btn">▶ MULAI</button>
   <div id="kamera"></div>
   <div id="sinyal"></div>
+  <div id="admin-bar" hidden style="text-align:center;margin:16px 0">
+    <a class="btn" href="admin.html" style="text-decoration:none;display:inline-block;margin:4px">⚙ Admin &amp; Pengaturan Awal</a>
+    <a class="btn abu" href="pengasuh.html" style="text-decoration:none;display:inline-block;margin:4px">👤 Halaman Pengasuh</a>
+  </div>
   <button id="keluar-akun">keluar akun</button>
 </div>
 
@@ -154,7 +158,10 @@ document.addEventListener("visibilitychange", async () => {
 pasangLogin({
   peranDiizinkan: ["satpam"],
   judul: "MDIIA Security",
-  onMasuk: () => { cekSinyal(); $("mulai").onclick = mulaiKamera; },
+  onMasuk: (user, peran) => {
+    cekSinyal(); $("mulai").onclick = mulaiKamera;
+    $("admin-bar").hidden = peran.role !== "admin";
+  },
 });
 $("keluar-akun").onclick = () => { if (confirm("Keluar dari akun satpam?")) keluarAkun(); };
 
