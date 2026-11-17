@@ -60,8 +60,31 @@
 
 <script type="module">
 import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, pasangTombolInstal, konfirmasi, beriTahu } from "./js/common.js";
-import { doc, collection, runTransaction, serverTimestamp }
+import { doc, collection, runTransaction, serverTimestamp, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { kirimTelegram, escHtml } from "./js/telegram.js";
+
+// ---------- notifikasi Telegram ----------
+let cfgTelegram = null;
+function pantauTelegram() {
+  onSnapshot(doc(db, "pengaturan", "telegram"), (s) => { cfgTelegram = s.exists() ? s.data() : null; }, () => {});
+}
+function lapor(jenis, k, tambahan = "") {
+  const c = cfgTelegram;
+  if (!c || c.aktif === false || !c.token) return;
+  const izinkan = { KELUAR: c.kirimKeluar !== false, DITOLAK: c.kirimDitolak !== false,
+    BLOKIR: c.kirimDitolak !== false, TIDAK_DIKENAL: c.kirimTakDikenal !== false }[jenis];
+  if (!izinkan) return;
+  const judul = { KELUAR: "🟢 <b>IZIN KELUAR DISETUJUI</b>", DITOLAK: "🔴 <b>DITOLAK – izin belum aktif</b>",
+    BLOKIR: k?.diganti ? "⛔ <b>DITOLAK – kartu lama (sudah diganti)</b>" : "⛔ <b>DITOLAK – kartu diblokir</b>",
+    TIDAK_DIKENAL: "⚠️ <b>KARTU TIDAK TERDAFTAR</b>" }[jenis];
+  const baris = [judul];
+  if (k) baris.push(`🪪 ${escHtml(k.nomor)} – milik ${escHtml(k.pemilik)}`);
+  baris.push(`🕒 ${escHtml(fmtWaktu(Date.now()))}`);
+  if (tambahan) baris.push(escHtml(tambahan));
+  baris.push(`📍 Pos satpam (${escHtml(emailSaya())})`);
+  kirimTelegram(c, baris.join("\n")).catch((e) => console.warn("Telegram:", e.message));
+}
 
 const $ = (id) => document.getElementById(id);
 let scanner = null, sibuk = false, kodeTerakhir = "", waktuTerakhir = 0, audio = null;
@@ -137,6 +160,7 @@ async function prosesKode(teks) {
   kodeTerakhir = teks; waktuTerakhir = now; sibuk = true;
 
   if (!teks.startsWith("IZIN:")) {
+    lapor("TIDAK_DIKENAL", null, "Isi QR bukan kartu izin.");
     putar("tidakTerdaftar"); return tampil("merah", "✖", "KARTU TIDAK TERDAFTAR", "", 4500);
   }
   const id = teks.slice(5).trim();
@@ -159,6 +183,7 @@ async function prosesKode(teks) {
     });
 
     const label = hasil.k ? `${hasil.k.nomor} – milik ${hasil.k.pemilik}` : "";
+    lapor(hasil.jenis, hasil.k, hasil.jenis === "DITOLAK" ? `Jatah sudah terpakai, aktif lagi ${fmtWaktu(hasil.aktifLagi)}.` : "");
     if (hasil.jenis === "KELUAR") {
       putar("disetujui"); tampil("hijau", "✔", "IZIN KELUAR DISETUJUI", label, 3500);
     } else if (hasil.jenis === "DITOLAK") {
@@ -241,6 +266,7 @@ pasangLogin({
       location.replace("admin.html"); return;
     }
     cekSinyal(); $("mulai").onclick = mulaiKamera;
+    pantauTelegram();
     pasangTombolInstal($("wadah-pasang"));
     $("admin-bar").hidden = peran.role !== "admin";
   },

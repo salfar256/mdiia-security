@@ -27,6 +27,7 @@
 
   <section class="card">
     <div class="sek-judul"><h3>Status Kartu</h3><div id="ringkas-kartu" class="chip-baris"></div></div>
+    <button class="btn kecil" id="reset-semua" style="margin:0 0 10px">🔄 Reset semua kartu terpakai</button>
     <div id="kartu" class="daftar-pemilik"></div>
   </section>
 
@@ -43,6 +44,33 @@
     <p id="ringkas" class="ringkas"></p>
     <div id="log" class="daftar-log gulir"></div>
   </section>
+
+  <details class="card" id="telegram">
+    <summary><b>📨 Notifikasi Telegram</b> <span id="tg-status" class="ringkas"></span></summary>
+    <ol class="petunjuk">
+      <li>Di Telegram, buka <b>@BotFather</b>, kirim <code>/newbot</code>, lalu salin <b>token</b> yang diberikan.</li>
+      <li>Masukkan bot ke <b>grup pengasuh</b> (atau kirim pesan langsung ke bot), lalu kirim pesan apa saja, misalnya <i>halo</i>.</li>
+      <li>Tempel token di bawah, tekan <b>Cari Chat ID</b>, pilih grupnya, lalu <b>Simpan</b>.</li>
+    </ol>
+    <label class="lbl">Token bot</label>
+    <div class="pass-wrap"><input id="tg-token" type="password" placeholder="123456789:AA..." autocomplete="off">
+      <button type="button" class="mata" id="tg-mata" aria-label="Tampilkan token">👁</button></div>
+    <label class="lbl">Chat ID tujuan <span class="ringkas">(boleh lebih dari satu, pisahkan dengan koma)</span></label>
+    <input id="tg-chat" type="text" placeholder="-1001234567890">
+    <div id="tg-pilihan" class="chip-baris" style="margin:8px 0"></div>
+    <label class="lbl">Kirim notifikasi saat</label>
+    <div class="cek-baris">
+      <label><input type="checkbox" id="tg-keluar" checked> Izin keluar disetujui</label>
+      <label><input type="checkbox" id="tg-ditolak" checked> Ditolak / kartu diblokir</label>
+      <label><input type="checkbox" id="tg-takdikenal" checked> Kartu tidak terdaftar</label>
+      <label><input type="checkbox" id="tg-aktif" checked> <b>Notifikasi aktif</b></label>
+    </div>
+    <div class="tombol-baris">
+      <button class="btn abu kecil" id="tg-cari">🔍 Cari Chat ID</button>
+      <button class="btn abu kecil" id="tg-uji">📤 Kirim pesan uji</button>
+      <button class="btn kecil" id="tg-simpan">💾 Simpan</button>
+    </div>
+  </details>
 
   <details class="card" id="setup">
     <summary><b>⚙ Pengaturan Awal (akun & kartu)</b></summary>
@@ -64,9 +92,10 @@
 
 <script type="module">
 import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc, konfirmasi, beriTahu } from "./js/common.js";
+import { kirimTelegram, cariChat, cekBot } from "./js/telegram.js";
 import {
   collection, query, orderBy, limit, where, onSnapshot, doc, runTransaction, serverTimestamp,
-  setDoc, getDocs, writeBatch, Timestamp,
+  setDoc, getDoc, getDocs, writeBatch, Timestamp,
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const $ = (id) => document.getElementById(id);
@@ -85,7 +114,8 @@ function gambarKartu() {
   st.forEach((x) => (grup[x.k.pemilik] ||= []).push(x));
   $("kartu").innerHTML = Object.entries(grup).map(([nama, isi]) => `
     <div class="pemilik">
-      <div class="pemilik-nama">${esc(nama)}</div>
+      <div class="pemilik-nama">${esc(nama)}
+        ${isi.some(({ s }) => !s.siap && !s.blokir) ? `<button class="link-kecil reset" data-reset="${esc(nama)}">🔄 Reset kartu</button>` : ""}</div>
       ${isi.map(({ k, s }) => {
         const kelas = s.blokir ? "blokir" : s.siap ? "siap" : "jeda";
         const teks = s.blokir ? "⛔ Diblokir" : s.siap ? "✅ Siap" : `⏳ Aktif ${fmtWaktu(s.aktifLagi)}`;
@@ -106,6 +136,9 @@ function gambarKartu() {
   $("kartu").querySelectorAll("[data-isi]").forEach((b) => b.onclick = () => ubahKartu(b.dataset.isi, "ISI_ULANG"));
   $("kartu").querySelectorAll("[data-blokir]").forEach((b) => b.onclick = () => ubahKartu(b.dataset.blokir, "BLOKIR"));
   $("kartu").querySelectorAll("[data-ganti]").forEach((b) => b.onclick = () => gantiKartu(b.dataset.ganti));
+  $("kartu").querySelectorAll("[data-reset]").forEach((b) => b.onclick = () =>
+    resetKartu(semuaKartu.filter((k) => k.pemilik === b.dataset.reset), `Reset kartu ${b.dataset.reset}?`));
+  $("reset-semua").hidden = !st.some(({ s }) => !s.siap && !s.blokir);
 
   const pilih = $("f-pemilik"), nilai = pilih.value;
   const nama = [...new Set(semuaKartu.map((k) => k.pemilik))];
@@ -137,6 +170,89 @@ async function ubahKartu(id, jenis) {
     beriTahu({ ISI_ULANG: "✅ Kartu berhasil diisi ulang", BLOKIR: "⛔ Kartu diblokir", BUKA_BLOKIR: "🔓 Blokir kartu dibuka" }[aksi]);
   } catch (e) { beriTahu("Gagal: " + e.message, "gagal", 5000); }
 }
+
+// ---------- reset (isi ulang) kartu oleh admin ----------
+async function resetKartu(daftar, judul) {
+  const target = daftar.filter((k) => !k.diganti && k.aktif !== false && !statusKartu(k).siap);
+  if (!target.length) { beriTahu("Semua kartu yang dipilih sudah siap."); return; }
+  const nama = target.map((k) => `${esc(k.nomor)} – ${esc(k.pemilik)}`).join("<br>");
+  if (!await konfirmasi({ ikon: "🔄", judul, pesan: `Kartu berikut bisa dipakai keluar <b>1 kali lagi</b>:<br>${nama}` })) return;
+  try {
+    const b = writeBatch(db);
+    target.forEach((k) => {
+      b.update(doc(db, "kartu", k.id), { terakhirDipakai: null });
+      b.set(doc(collection(db, "log")), {
+        kartuId: k.id, pemilik: k.pemilik, nomor: k.nomor, aksi: "ISI_ULANG",
+        keterangan: "Reset oleh admin", waktu: serverTimestamp(), oleh: emailSaya(),
+      });
+    });
+    await b.commit();
+    beriTahu(`✅ ${target.length} kartu berhasil direset`);
+  } catch (e) { beriTahu("Gagal: " + e.message, "gagal", 5000); }
+}
+$("reset-semua").onclick = () => resetKartu(semuaKartu, "Reset semua kartu terpakai?");
+
+// ---------- pengaturan Telegram ----------
+const refTg = () => doc(db, "pengaturan", "telegram");
+function bacaFormTg() {
+  return {
+    token: $("tg-token").value.trim(), chatId: $("tg-chat").value.trim(),
+    kirimKeluar: $("tg-keluar").checked, kirimDitolak: $("tg-ditolak").checked,
+    kirimTakDikenal: $("tg-takdikenal").checked, aktif: $("tg-aktif").checked,
+  };
+}
+async function muatTelegram() {
+  try {
+    const s = await getDoc(refTg());
+    const c = s.exists() ? s.data() : {};
+    $("tg-token").value = c.token || ""; $("tg-chat").value = c.chatId || "";
+    $("tg-keluar").checked = c.kirimKeluar !== false; $("tg-ditolak").checked = c.kirimDitolak !== false;
+    $("tg-takdikenal").checked = c.kirimTakDikenal !== false; $("tg-aktif").checked = c.aktif !== false;
+    $("tg-status").textContent = c.token && c.chatId ? (c.aktif === false ? "· nonaktif" : "· aktif") : "· belum diatur";
+  } catch (e) {
+    $("tg-status").textContent = "· perbarui Rules Firebase dulu";
+  }
+}
+$("tg-mata").onclick = () => {
+  const t = $("tg-token"), lihat = t.type === "password";
+  t.type = lihat ? "text" : "password"; $("tg-mata").textContent = lihat ? "🙈" : "👁";
+};
+$("tg-cari").onclick = async () => {
+  const token = $("tg-token").value.trim();
+  if (!token) return beriTahu("Isi token bot dulu.", "gagal");
+  try {
+    const bot = await cekBot(token);
+    const chat = await cariChat(token);
+    if (!chat.length) {
+      $("tg-pilihan").innerHTML = `<span class="ringkas">Bot <b>@${esc(bot.username)}</b> belum menerima pesan. Kirim pesan di grup/ke bot, lalu tekan Cari lagi.</span>`;
+      return;
+    }
+    $("tg-pilihan").innerHTML = chat.map((c) => `<button type="button" class="chip pilih-chat" data-id="${esc(c.id)}">➕ ${esc(c.nama)} (${esc(c.id)})</button>`).join("");
+    $("tg-pilihan").querySelectorAll(".pilih-chat").forEach((b) => b.onclick = () => {
+      const ada = $("tg-chat").value.split(/[\s,;]+/).filter(Boolean);
+      if (!ada.includes(b.dataset.id)) ada.push(b.dataset.id);
+      $("tg-chat").value = ada.join(", ");
+    });
+  } catch (e) { beriTahu("Token salah atau tidak ada internet: " + e.message, "gagal", 6000); }
+};
+$("tg-uji").onclick = async () => {
+  const c = bacaFormTg();
+  if (!c.token || !c.chatId) return beriTahu("Isi token dan Chat ID dulu.", "gagal");
+  try {
+    const n = await kirimTelegram({ ...c, aktif: true },
+      `✅ <b>Uji notifikasi MDIIA Security</b>\nNotifikasi pindai kartu izin akan dikirim ke chat ini.\n🕒 ${fmtWaktu(Date.now())}`);
+    beriTahu(`✅ Pesan uji terkirim ke ${n} chat`);
+  } catch (e) { beriTahu("Gagal kirim: " + e.message, "gagal", 6000); }
+};
+$("tg-simpan").onclick = async () => {
+  const c = bacaFormTg();
+  if (c.aktif && (!c.token || !c.chatId)) return beriTahu("Isi token dan Chat ID, atau matikan notifikasi.", "gagal");
+  try {
+    await setDoc(refTg(), { ...c, diubah: serverTimestamp(), oleh: emailSaya() });
+    beriTahu("💾 Pengaturan Telegram disimpan");
+    muatTelegram();
+  } catch (e) { beriTahu("Gagal menyimpan. Pastikan Rules Firebase sudah diperbarui.", "gagal", 6000); }
+};
 
 // ---------- ganti kartu hilang/rusak ----------
 async function gantiKartu(id) {
@@ -277,6 +393,7 @@ pasangLogin({
       gambarKartu();
     });
     pasangLog();
+    muatTelegram();
     setInterval(gambarKartu, 60000);
   },
 });

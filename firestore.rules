@@ -43,6 +43,12 @@ service cloud.firestore {
             && request.resource.data.terakhirDipakai == null);
     }
 
+    // Pengaturan (token & chat Telegram): dibaca satpam untuk mengirim notifikasi, diubah admin saja
+    match /pengaturan/{id} {
+      allow read: if isAdmin() || isSatpam();
+      allow write: if isAdmin();
+    }
+
     // Log: bisa dibaca admin dan semua pengasuh; tidak bisa diubah/dihapus siapa pun
     match /log/{id} {
       allow read: if isAdmin() || isPengasuh();
