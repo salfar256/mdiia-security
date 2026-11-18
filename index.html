@@ -63,27 +63,36 @@ import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, pasangTo
 import { doc, collection, runTransaction, serverTimestamp, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { kirimTelegram, escHtml } from "./js/telegram.js";
+import { kirimWA } from "./js/whatsapp.js";
 
 // ---------- notifikasi Telegram ----------
-let cfgTelegram = null;
+let cfgTelegram = null, cfgWA = null;
 function pantauTelegram() {
   onSnapshot(doc(db, "pengaturan", "telegram"), (s) => { cfgTelegram = s.exists() ? s.data() : null; }, () => {});
+  onSnapshot(doc(db, "pengaturan", "whatsapp"), (s) => { cfgWA = s.exists() ? s.data() : null; }, () => {});
 }
+const bolehKirim = (c, jenis) => c && c.aktif !== false && c.token && ({
+  KELUAR: c.kirimKeluar !== false, DITOLAK: c.kirimDitolak !== false,
+  BLOKIR: c.kirimDitolak !== false, TIDAK_DIKENAL: c.kirimTakDikenal !== false }[jenis]);
+
 function lapor(jenis, k, tambahan = "") {
-  const c = cfgTelegram;
-  if (!c || c.aktif === false || !c.token) return;
-  const izinkan = { KELUAR: c.kirimKeluar !== false, DITOLAK: c.kirimDitolak !== false,
-    BLOKIR: c.kirimDitolak !== false, TIDAK_DIKENAL: c.kirimTakDikenal !== false }[jenis];
-  if (!izinkan) return;
-  const judul = { KELUAR: "🟢 <b>IZIN KELUAR DISETUJUI</b>", DITOLAK: "🔴 <b>DITOLAK – izin belum aktif</b>",
-    BLOKIR: k?.diganti ? "⛔ <b>DITOLAK – kartu lama (sudah diganti)</b>" : "⛔ <b>DITOLAK – kartu diblokir</b>",
-    TIDAK_DIKENAL: "⚠️ <b>KARTU TIDAK TERDAFTAR</b>" }[jenis];
-  const baris = [judul];
-  if (k) baris.push(`🪪 ${escHtml(k.nomor)} – milik ${escHtml(k.pemilik)}`);
-  baris.push(`🕒 ${escHtml(fmtWaktu(Date.now()))}`);
-  if (tambahan) baris.push(escHtml(tambahan));
-  baris.push(`📍 Pos satpam (${escHtml(emailSaya())})`);
-  kirimTelegram(c, baris.join("\n")).catch((e) => console.warn("Telegram:", e.message));
+  const judul = { KELUAR: "🟢 IZIN KELUAR DISETUJUI", DITOLAK: "🔴 DITOLAK – izin belum aktif",
+    BLOKIR: k?.diganti ? "⛔ DITOLAK – kartu lama (sudah diganti)" : "⛔ DITOLAK – kartu diblokir",
+    TIDAK_DIKENAL: "⚠️ KARTU TIDAK TERDAFTAR" }[jenis];
+  const isi = [];
+  if (k) isi.push(`🪪 ${k.nomor} – milik ${k.pemilik}`);
+  isi.push(`🕒 ${fmtWaktu(Date.now())}`);
+  if (tambahan) isi.push(tambahan);
+  isi.push(`📍 Pos satpam (${emailSaya()})`);
+
+  if (bolehKirim(cfgTelegram, jenis)) {
+    const teks = [`<b>${escHtml(judul)}</b>`, ...isi.map(escHtml)].join("\n");
+    kirimTelegram(cfgTelegram, teks).catch((e) => console.warn("Telegram:", e.message));
+  }
+  if (bolehKirim(cfgWA, jenis)) {
+    const teks = [`*${judul}*`, ...isi].join("\n");
+    kirimWA(cfgWA, teks).catch((e) => console.warn("WhatsApp:", e.message));
+  }
 }
 
 const $ = (id) => document.getElementById(id);

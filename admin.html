@@ -72,6 +72,33 @@
     </div>
   </details>
 
+  <details class="card" id="whatsapp">
+    <summary><b>💬 Notifikasi WhatsApp</b> <span id="wa-status" class="ringkas"></span></summary>
+    <ol class="petunjuk">
+      <li>Daftar di <a href="https://fonnte.com" target="_blank" rel="noopener">fonnte.com</a>, buka menu <b>Device</b>, tambahkan nomor WA Bapak, lalu <b>Connect</b> dan scan QR seperti WhatsApp Web.</li>
+      <li>Salin <b>token</b> device tersebut dan tempel di bawah.</li>
+      <li>Tekan <b>Cari Grup WA</b> untuk memilih grup pengasuh, atau isi nomor tujuan (contoh 0812xxxx). Lalu <b>Kirim pesan uji</b> dan <b>Simpan</b>.</li>
+    </ol>
+    <label class="lbl">Token Fonnte</label>
+    <div class="pass-wrap"><input id="wa-token" type="password" placeholder="Token device Fonnte" autocomplete="off">
+      <button type="button" class="mata" id="wa-mata" aria-label="Tampilkan token">👁</button></div>
+    <label class="lbl">Tujuan <span class="ringkas">(nomor WA atau ID grup, pisahkan dengan koma)</span></label>
+    <input id="wa-target" type="text" placeholder="120363xxxxxxxx@g.us, 0812xxxxxxx">
+    <div id="wa-pilihan" class="chip-baris" style="margin:8px 0"></div>
+    <label class="lbl">Kirim notifikasi saat</label>
+    <div class="cek-baris">
+      <label><input type="checkbox" id="wa-keluar" checked> Izin keluar disetujui</label>
+      <label><input type="checkbox" id="wa-ditolak" checked> Ditolak / kartu diblokir</label>
+      <label><input type="checkbox" id="wa-takdikenal" checked> Kartu tidak terdaftar</label>
+      <label><input type="checkbox" id="wa-aktif" checked> <b>Notifikasi aktif</b></label>
+    </div>
+    <div class="tombol-baris">
+      <button class="btn abu kecil" id="wa-cari">🔍 Cari Grup WA</button>
+      <button class="btn abu kecil" id="wa-uji">📤 Kirim pesan uji</button>
+      <button class="btn kecil" id="wa-simpan">💾 Simpan</button>
+    </div>
+  </details>
+
   <details class="card" id="setup">
     <summary><b>⚙ Pengaturan Awal (akun & kartu)</b></summary>
     <p>Buat dulu akunnya di Firebase Console → Authentication → Add user. Lalu isi daftar di bawah
@@ -93,6 +120,7 @@
 <script type="module">
 import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc, konfirmasi, beriTahu } from "./js/common.js";
 import { kirimTelegram, cariChat, cekBot } from "./js/telegram.js";
+import { kirimWA, cariGrupWA } from "./js/whatsapp.js";
 import {
   collection, query, orderBy, limit, where, onSnapshot, doc, runTransaction, serverTimestamp,
   setDoc, getDoc, getDocs, writeBatch, Timestamp,
@@ -251,6 +279,62 @@ $("tg-simpan").onclick = async () => {
     await setDoc(refTg(), { ...c, diubah: serverTimestamp(), oleh: emailSaya() });
     beriTahu("💾 Pengaturan Telegram disimpan");
     muatTelegram();
+    muatWA();
+  } catch (e) { beriTahu("Gagal menyimpan. Pastikan Rules Firebase sudah diperbarui.", "gagal", 6000); }
+};
+
+// ---------- pengaturan WhatsApp (Fonnte) ----------
+const refWA = () => doc(db, "pengaturan", "whatsapp");
+function bacaFormWA() {
+  return {
+    token: $("wa-token").value.trim(), target: $("wa-target").value.trim(),
+    kirimKeluar: $("wa-keluar").checked, kirimDitolak: $("wa-ditolak").checked,
+    kirimTakDikenal: $("wa-takdikenal").checked, aktif: $("wa-aktif").checked,
+  };
+}
+async function muatWA() {
+  try {
+    const s = await getDoc(refWA());
+    const c = s.exists() ? s.data() : {};
+    $("wa-token").value = c.token || ""; $("wa-target").value = c.target || "";
+    $("wa-keluar").checked = c.kirimKeluar !== false; $("wa-ditolak").checked = c.kirimDitolak !== false;
+    $("wa-takdikenal").checked = c.kirimTakDikenal !== false; $("wa-aktif").checked = c.aktif !== false;
+    $("wa-status").textContent = c.token && c.target ? (c.aktif === false ? "· nonaktif" : "· aktif") : "· belum diatur";
+  } catch (e) { $("wa-status").textContent = "· perbarui Rules Firebase dulu"; }
+}
+$("wa-mata").onclick = () => {
+  const t = $("wa-token"), lihat = t.type === "password";
+  t.type = lihat ? "text" : "password"; $("wa-mata").textContent = lihat ? "🙈" : "👁";
+};
+$("wa-cari").onclick = async () => {
+  const token = $("wa-token").value.trim();
+  if (!token) return beriTahu("Isi token Fonnte dulu.", "gagal");
+  $("wa-pilihan").innerHTML = `<span class="ringkas">Mencari grup…</span>`;
+  try {
+    const grup = await cariGrupWA(token);
+    if (!grup.length) { $("wa-pilihan").innerHTML = `<span class="ringkas">Tidak ada grup. Pastikan nomor sudah terhubung dan ikut grup pengasuh.</span>`; return; }
+    $("wa-pilihan").innerHTML = grup.map((g) => `<button type="button" class="chip pilih-chat" data-id="${esc(g.id)}">➕ ${esc(g.nama)}</button>`).join("");
+    $("wa-pilihan").querySelectorAll(".pilih-chat").forEach((b) => b.onclick = () => {
+      const ada = $("wa-target").value.split(/[\s,;]+/).filter(Boolean);
+      if (!ada.includes(b.dataset.id)) ada.push(b.dataset.id);
+      $("wa-target").value = ada.join(", ");
+    });
+  } catch (e) { $("wa-pilihan").innerHTML = ""; beriTahu("Gagal: " + e.message, "gagal", 6000); }
+};
+$("wa-uji").onclick = async () => {
+  const c = bacaFormWA();
+  if (!c.token || !c.target) return beriTahu("Isi token dan tujuan dulu.", "gagal");
+  try {
+    await kirimWA({ ...c, aktif: true }, `✅ *Uji notifikasi MDIIA Security*\nNotifikasi pindai kartu izin akan dikirim ke sini.\n🕒 ${fmtWaktu(Date.now())}`);
+    beriTahu("✅ Pesan uji WhatsApp terkirim");
+  } catch (e) { beriTahu("Gagal kirim: " + e.message, "gagal", 6000); }
+};
+$("wa-simpan").onclick = async () => {
+  const c = bacaFormWA();
+  if (c.aktif && (!c.token || !c.target)) return beriTahu("Isi token dan tujuan, atau matikan notifikasi.", "gagal");
+  try {
+    await setDoc(refWA(), { ...c, diubah: serverTimestamp(), oleh: emailSaya() });
+    beriTahu("💾 Pengaturan WhatsApp disimpan"); muatWA();
   } catch (e) { beriTahu("Gagal menyimpan. Pastikan Rules Firebase sudah diperbarui.", "gagal", 6000); }
 };
 
