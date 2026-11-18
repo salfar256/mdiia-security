@@ -21,8 +21,15 @@ const ASAL = (process.env.ALLOWED_ORIGIN || "*").trim();
 if (!API_KEY) console.warn("PERINGATAN: API_KEY belum diisi. Semua permintaan akan ditolak.");
 
 let sock = null, qrTerakhir = null, terhubung = false, nomor = null, mulaiUlang = null;
+let istirahat = false, sedangMulai = false;
+// Sudah pernah tertaut? (ada file kredensial di volume)
+const sudahTertaut = () => fs.existsSync(`${AUTH_DIR}/creds.json`) &&
+  JSON.parse(fs.readFileSync(`${AUTH_DIR}/creds.json`, "utf8") || "{}").registered === true;
 
 async function mulai() {
+  if (sedangMulai) return;
+  sedangMulai = true; istirahat = false;
+  setTimeout(() => { sedangMulai = false; }, 5000);
   fs.mkdirSync(AUTH_DIR, { recursive: true });
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   let version;
@@ -37,7 +44,10 @@ async function mulai() {
   });
   sock.ev.on("creds.update", saveCreds);
   sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
-    if (qr) { qrTerakhir = qr; console.log("QR baru tersedia – buka halaman / untuk memindai."); }
+    if (qr) {
+      if (!qrTerakhir) console.log("Menunggu scan QR – buka halaman / dari panel Admin.");
+      qrTerakhir = qr;
+    }
     if (connection === "open") {
       terhubung = true; qrTerakhir = null;
       nomor = (sock.user?.id || "").split(":")[0].split("@")[0];
@@ -52,6 +62,12 @@ async function mulai() {
         nomor = null;
       }
       clearTimeout(mulaiUlang);
+      // Belum pernah tertaut dan QR kedaluwarsa (408): istirahat sampai halaman QR dibuka lagi
+      if (!sudahTertaut() && (kode === DisconnectReason.timedOut || kode === DisconnectReason.loggedOut)) {
+        istirahat = true; qrTerakhir = null;
+        console.log("QR tidak di-scan. Server istirahat sampai halaman QR dibuka lagi.");
+        return;
+      }
       mulaiUlang = setTimeout(() => mulai().catch((e) => console.error("Gagal mulai:", e)), 3000);
     }
   });
@@ -114,6 +130,7 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (url.pathname === "/" && req.method === "GET") {
+      if (istirahat) mulai().catch((e) => console.error("Gagal mulai:", e)); // bangunkan untuk QR baru
       let isi;
       if (terhubung) {
         isi = `<p class="ok">✅ WhatsApp terhubung</p><p>Nomor: <b>+${nomor}</b></p><p>Halaman ini boleh ditutup.</p>`;
@@ -129,7 +146,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(halaman(isi));
     }
 
-    if (url.pathname === "/status") return kirimJson(res, 200, { status: true, terhubung, nomor, adaQr: !!qrTerakhir });
+    if (url.pathname === "/status") return kirimJson(res, 200, { status: true, terhubung, nomor, adaQr: !!qrTerakhir, istirahat });
 
     if (url.pathname === "/groups") {
       if (!terhubung) return kirimJson(res, 503, { status: false, reason: "WhatsApp belum terhubung. Scan QR dulu." });
