@@ -130,3 +130,4 @@ textarea { width: 100%; min-height: 140px; font-family: monospace; }
   border: 1px solid #ccd5cf; border-radius: 10px; }
 #whatsapp .pass-wrap .mata { top: 0; height: 42px; }
 #wa-status { font-weight: 400; margin-left: 4px; }
+#whatsapp select { padding: 10px; font-size: 15px; border-radius: 10px; }

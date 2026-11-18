@@ -74,13 +74,27 @@
 
   <details class="card" id="whatsapp">
     <summary><b>💬 Notifikasi WhatsApp</b> <span id="wa-status" class="ringkas"></span></summary>
-    <ol class="petunjuk">
-      <li>Daftar di <a href="https://fonnte.com" target="_blank" rel="noopener">fonnte.com</a>, buka menu <b>Device</b>, tambahkan nomor WA Bapak, lalu <b>Connect</b> dan scan QR seperti WhatsApp Web.</li>
-      <li>Salin <b>token</b> device tersebut dan tempel di bawah.</li>
-      <li>Tekan <b>Cari Grup WA</b> untuk memilih grup pengasuh, atau isi nomor tujuan (contoh 0812xxxx). Lalu <b>Kirim pesan uji</b> dan <b>Simpan</b>.</li>
+    <label class="lbl">Penyedia</label>
+    <select id="wa-penyedia" style="width:100%">
+      <option value="server">Server sendiri (Railway) – disarankan</option>
+      <option value="fonnte">Fonnte</option>
+    </select>
+    <ol class="petunjuk" data-untuk="server">
+      <li>Isi <b>alamat server</b> dan <b>kunci API</b> dari Railway, lalu tekan <b>Simpan</b>.</li>
+      <li>Tekan <b>📱 Tautkan nomor WA</b>, lalu scan QR dari WhatsApp di HP: menu ⋮ → <b>Perangkat tertaut</b>.</li>
+      <li>Tekan <b>Cari Grup WA</b> untuk memilih grup pengasuh (atau isi nomor tujuan), <b>Kirim pesan uji</b>, lalu <b>Simpan</b>.</li>
     </ol>
-    <label class="lbl">Token Fonnte</label>
-    <div class="pass-wrap"><input id="wa-token" type="password" placeholder="Token device Fonnte" autocomplete="off">
+    <ol class="petunjuk" data-untuk="fonnte" hidden>
+      <li>Daftar di <a href="https://fonnte.com" target="_blank" rel="noopener">fonnte.com</a>, menu <b>Device</b>, tambahkan nomor WA, <b>Connect</b>, lalu scan QR.</li>
+      <li>Salin <b>token</b> device dan tempel di bawah.</li>
+      <li>Tekan <b>Cari Grup WA</b> atau isi nomor tujuan, <b>Kirim pesan uji</b>, lalu <b>Simpan</b>.</li>
+    </ol>
+    <div data-untuk="server">
+      <label class="lbl">Alamat server</label>
+      <input id="wa-url" type="text" placeholder="https://mdiia-wa-production.up.railway.app">
+    </div>
+    <label class="lbl" id="wa-lbl-token">Kunci API</label>
+    <div class="pass-wrap"><input id="wa-token" type="password" placeholder="" autocomplete="off">
       <button type="button" class="mata" id="wa-mata" aria-label="Tampilkan token">👁</button></div>
     <label class="lbl">Tujuan <span class="ringkas">(nomor WA atau ID grup, pisahkan dengan koma)</span></label>
     <input id="wa-target" type="text" placeholder="120363xxxxxxxx@g.us, 0812xxxxxxx">
@@ -93,6 +107,7 @@
       <label><input type="checkbox" id="wa-aktif" checked> <b>Notifikasi aktif</b></label>
     </div>
     <div class="tombol-baris">
+      <button class="btn abu kecil" id="wa-qr" data-untuk="server">📱 Tautkan nomor WA</button>
       <button class="btn abu kecil" id="wa-cari">🔍 Cari Grup WA</button>
       <button class="btn abu kecil" id="wa-uji">📤 Kirim pesan uji</button>
       <button class="btn kecil" id="wa-simpan">💾 Simpan</button>
@@ -120,7 +135,7 @@
 <script type="module">
 import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc, konfirmasi, beriTahu } from "./js/common.js";
 import { kirimTelegram, cariChat, cekBot } from "./js/telegram.js";
-import { kirimWA, cariGrupWA } from "./js/whatsapp.js";
+import { kirimWA, cariGrupWA, statusServerWA, urlHalamanQR } from "./js/whatsapp.js";
 import {
   collection, query, orderBy, limit, where, onSnapshot, doc, runTransaction, serverTimestamp,
   setDoc, getDoc, getDocs, writeBatch, Timestamp,
@@ -283,36 +298,57 @@ $("tg-simpan").onclick = async () => {
   } catch (e) { beriTahu("Gagal menyimpan. Pastikan Rules Firebase sudah diperbarui.", "gagal", 6000); }
 };
 
-// ---------- pengaturan WhatsApp (Fonnte) ----------
+// ---------- pengaturan WhatsApp ----------
 const refWA = () => doc(db, "pengaturan", "whatsapp");
 function bacaFormWA() {
   return {
+    penyedia: $("wa-penyedia").value, serverUrl: $("wa-url").value.trim(),
     token: $("wa-token").value.trim(), target: $("wa-target").value.trim(),
     kirimKeluar: $("wa-keluar").checked, kirimDitolak: $("wa-ditolak").checked,
     kirimTakDikenal: $("wa-takdikenal").checked, aktif: $("wa-aktif").checked,
   };
 }
+function aturTampilanWA() {
+  const p = $("wa-penyedia").value;
+  document.querySelectorAll("#whatsapp [data-untuk]").forEach((el) => { el.hidden = el.dataset.untuk !== p; });
+  $("wa-lbl-token").textContent = p === "server" ? "Kunci API server" : "Token Fonnte";
+  $("wa-token").placeholder = p === "server" ? "Kunci API dari Railway" : "Token device Fonnte";
+}
+$("wa-penyedia").onchange = aturTampilanWA;
+const lengkap = (c) => c.token && (c.penyedia === "fonnte" || c.serverUrl);
 async function muatWA() {
   try {
     const s = await getDoc(refWA());
     const c = s.exists() ? s.data() : {};
+    $("wa-penyedia").value = c.penyedia || "server"; $("wa-url").value = c.serverUrl || "";
     $("wa-token").value = c.token || ""; $("wa-target").value = c.target || "";
     $("wa-keluar").checked = c.kirimKeluar !== false; $("wa-ditolak").checked = c.kirimDitolak !== false;
     $("wa-takdikenal").checked = c.kirimTakDikenal !== false; $("wa-aktif").checked = c.aktif !== false;
-    $("wa-status").textContent = c.token && c.target ? (c.aktif === false ? "· nonaktif" : "· aktif") : "· belum diatur";
+    aturTampilanWA();
+    $("wa-status").textContent = lengkap(c) && c.target ? (c.aktif === false ? "· nonaktif" : "· aktif") : "· belum diatur";
+    if (c.penyedia !== "fonnte" && lengkap(c)) {
+      statusServerWA(c).then((st) => {
+        $("wa-status").textContent += st.terhubung ? ` · WA terhubung (+${st.nomor})` : " · WA belum ditautkan";
+      }).catch(() => { $("wa-status").textContent += " · server tidak bisa dihubungi"; });
+    }
   } catch (e) { $("wa-status").textContent = "· perbarui Rules Firebase dulu"; }
 }
 $("wa-mata").onclick = () => {
   const t = $("wa-token"), lihat = t.type === "password";
   t.type = lihat ? "text" : "password"; $("wa-mata").textContent = lihat ? "🙈" : "👁";
 };
+$("wa-qr").onclick = () => {
+  const c = bacaFormWA();
+  if (!c.serverUrl || !c.token) return beriTahu("Isi alamat server dan kunci API dulu.", "gagal");
+  window.open(urlHalamanQR(c), "_blank");
+};
 $("wa-cari").onclick = async () => {
-  const token = $("wa-token").value.trim();
-  if (!token) return beriTahu("Isi token Fonnte dulu.", "gagal");
+  const c = bacaFormWA();
+  if (!lengkap(c)) return beriTahu("Lengkapi data penyedia dulu.", "gagal");
   $("wa-pilihan").innerHTML = `<span class="ringkas">Mencari grup…</span>`;
   try {
-    const grup = await cariGrupWA(token);
-    if (!grup.length) { $("wa-pilihan").innerHTML = `<span class="ringkas">Tidak ada grup. Pastikan nomor sudah terhubung dan ikut grup pengasuh.</span>`; return; }
+    const grup = await cariGrupWA(c);
+    if (!grup.length) { $("wa-pilihan").innerHTML = `<span class="ringkas">Tidak ada grup. Pastikan nomor sudah tertaut dan ikut grup pengasuh.</span>`; return; }
     $("wa-pilihan").innerHTML = grup.map((g) => `<button type="button" class="chip pilih-chat" data-id="${esc(g.id)}">➕ ${esc(g.nama)}</button>`).join("");
     $("wa-pilihan").querySelectorAll(".pilih-chat").forEach((b) => b.onclick = () => {
       const ada = $("wa-target").value.split(/[\s,;]+/).filter(Boolean);
@@ -323,7 +359,7 @@ $("wa-cari").onclick = async () => {
 };
 $("wa-uji").onclick = async () => {
   const c = bacaFormWA();
-  if (!c.token || !c.target) return beriTahu("Isi token dan tujuan dulu.", "gagal");
+  if (!lengkap(c) || !c.target) return beriTahu("Lengkapi data penyedia dan tujuan dulu.", "gagal");
   try {
     await kirimWA({ ...c, aktif: true }, `✅ *Uji notifikasi MDIIA Security*\nNotifikasi pindai kartu izin akan dikirim ke sini.\n🕒 ${fmtWaktu(Date.now())}`);
     beriTahu("✅ Pesan uji WhatsApp terkirim");
@@ -331,7 +367,7 @@ $("wa-uji").onclick = async () => {
 };
 $("wa-simpan").onclick = async () => {
   const c = bacaFormWA();
-  if (c.aktif && (!c.token || !c.target)) return beriTahu("Isi token dan tujuan, atau matikan notifikasi.", "gagal");
+  if (c.aktif && c.target && !lengkap(c)) return beriTahu("Lengkapi data penyedia, atau matikan notifikasi.", "gagal");
   try {
     await setDoc(refWA(), { ...c, diubah: serverTimestamp(), oleh: emailSaya() });
     beriTahu("💾 Pengaturan WhatsApp disimpan"); muatWA();
