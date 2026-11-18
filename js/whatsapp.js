@@ -63,6 +63,11 @@ export async function cariGrupWA(cfg) {
     .filter((g) => g.id);
 }
 
+// Lepas nomor WA yang tertaut di server sendiri (perlu scan QR lagi)
+export async function lepasWA(cfg) {
+  return server(cfg, "logout", {});
+}
+
 // Status sambungan server sendiri
 export async function statusServerWA(cfg) {
   return server(cfg, "status");

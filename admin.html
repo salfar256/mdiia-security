@@ -110,6 +110,7 @@
     </div>
     <div class="tombol-baris">
       <button class="btn abu kecil" id="wa-qr" data-untuk="server">📱 Tautkan nomor WA</button>
+      <button class="btn merah kecil" id="wa-lepas" data-untuk="server">🔌 Lepas nomor WA</button>
       <button class="btn abu kecil" id="wa-cari">🔍 Cari Grup WA</button>
       <button class="btn abu kecil" id="wa-uji">📤 Kirim pesan uji</button>
       <button class="btn kecil" id="wa-simpan">💾 Simpan</button>
@@ -137,7 +138,7 @@
 <script type="module">
 import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, esc, konfirmasi, beriTahu } from "./js/common.js";
 import { kirimTelegram, cariChat, cekBot } from "./js/telegram.js";
-import { kirimWA, cariGrupWA, statusServerWA, urlHalamanQR } from "./js/whatsapp.js";
+import { kirimWA, cariGrupWA, statusServerWA, urlHalamanQR, lepasWA } from "./js/whatsapp.js";
 import {
   collection, query, orderBy, limit, where, onSnapshot, doc, runTransaction, serverTimestamp,
   setDoc, getDoc, getDocs, writeBatch, Timestamp,
@@ -368,6 +369,24 @@ $("wa-qr").onclick = () => {
   const c = bacaFormWA();
   if (!c.serverUrl || !c.token) return beriTahu("Isi alamat server dan kunci API dulu.", "gagal");
   window.open(urlHalamanQR(c), "_blank");
+};
+$("wa-lepas").onclick = async () => {
+  const c = bacaFormWA();
+  if (!c.serverUrl || !c.token) return beriTahu("Isi alamat server dan kunci API dulu.", "gagal");
+  let nomorKini = "";
+  try { const st = await statusServerWA(c); nomorKini = st.terhubung ? `+${st.nomor}` : ""; } catch (e) { /* lanjut */ }
+  if (!nomorKini) return beriTahu("Tidak ada nomor WA yang sedang tertaut.");
+  const yakin = await konfirmasi({
+    ikon: "🔌", judul: "Lepas nomor WA?",
+    pesan: `Nomor <b>${esc(nomorKini)}</b> akan dilepas dari server. Notifikasi WhatsApp berhenti sampai nomor baru ditautkan lewat <b>Tautkan nomor WA</b>.`,
+    ya: "Lepas", bahaya: true,
+  });
+  if (!yakin) return;
+  try {
+    await lepasWA(c);
+    beriTahu(`🔌 Nomor ${nomorKini} sudah dilepas`);
+    muatWA();
+  } catch (e) { beriTahu("Gagal melepas: " + e.message, "gagal", 6000); }
 };
 $("wa-cari").onclick = async () => {
   const c = bacaFormWA();

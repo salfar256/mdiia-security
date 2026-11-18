@@ -172,8 +172,14 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === "/logout" && req.method === "POST") {
+      const lama = nomor;
       try { await sock.logout(); } catch { /* abaikan */ }
-      return kirimJson(res, 200, { status: true });
+      try { sock.end(undefined); } catch { /* abaikan */ }
+      clearTimeout(mulaiUlang);
+      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+      terhubung = false; nomor = null; qrTerakhir = null; istirahat = true;
+      console.log("Nomor dilepas:", lama || "-", "– tekan Tautkan nomor WA untuk QR baru.");
+      return kirimJson(res, 200, { status: true, dilepas: lama });
     }
 
     kirimJson(res, 404, { status: false, reason: "Tidak ditemukan" });
