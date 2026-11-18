@@ -63,7 +63,7 @@ import { db, pasangLogin, statusKartu, fmtWaktu, emailSaya, keluarAkun, pasangTo
 import { doc, collection, runTransaction, serverTimestamp, onSnapshot }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { kirimTelegram, escHtml } from "./js/telegram.js";
-import { kirimWA } from "./js/whatsapp.js";
+import { kirimWA, tujuanUntuk } from "./js/whatsapp.js";
 
 // ---------- notifikasi Telegram ----------
 let cfgTelegram = null, cfgWA = null;
@@ -91,7 +91,7 @@ function lapor(jenis, k, tambahan = "") {
   }
   if (bolehKirim(cfgWA, jenis)) {
     const teks = [`*${judul}*`, ...isi].join("\n");
-    kirimWA(cfgWA, teks).catch((e) => console.warn("WhatsApp:", e.message));
+    kirimWA(cfgWA, teks, tujuanUntuk(cfgWA, k)).catch((e) => console.warn("WhatsApp:", e.message));
   }
 }
 

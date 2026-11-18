@@ -131,3 +131,7 @@ textarea { width: 100%; min-height: 140px; font-family: monospace; }
 #whatsapp .pass-wrap .mata { top: 0; height: 42px; }
 #wa-status { font-weight: 400; margin-left: 4px; }
 #whatsapp select { padding: 10px; font-size: 15px; border-radius: 10px; }
+.daftar-nomor { display: flex; flex-direction: column; gap: 6px; }
+.baris-nomor { display: grid; grid-template-columns: 1fr 1.2fr; gap: 8px; align-items: center; font-size: 14px; }
+.baris-nomor input { width: 100%; padding: 9px; font-size: 15px; border: 1px solid #ccd5cf; border-radius: 10px; }
+@media (max-width: 420px) { .baris-nomor { grid-template-columns: 1fr; gap: 2px; } }

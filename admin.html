@@ -82,7 +82,7 @@
     <ol class="petunjuk" data-untuk="server">
       <li>Isi <b>alamat server</b> dan <b>kunci API</b> dari Railway, lalu tekan <b>Simpan</b>.</li>
       <li>Tekan <b>📱 Tautkan nomor WA</b>, lalu scan QR dari WhatsApp di HP: menu ⋮ → <b>Perangkat tertaut</b>.</li>
-      <li>Tekan <b>Cari Grup WA</b> untuk memilih grup pengasuh (atau isi nomor tujuan), <b>Kirim pesan uji</b>, lalu <b>Simpan</b>.</li>
+      <li>Isi <b>nomor WA tiap pengasuh</b> (masing-masing hanya menerima notifikasi kartunya sendiri), dan bila perlu penerima semua kartu (admin/grup). Lalu <b>Kirim pesan uji</b> dan <b>Simpan</b>.</li>
     </ol>
     <ol class="petunjuk" data-untuk="fonnte" hidden>
       <li>Daftar di <a href="https://fonnte.com" target="_blank" rel="noopener">fonnte.com</a>, menu <b>Device</b>, tambahkan nomor WA, <b>Connect</b>, lalu scan QR.</li>
@@ -96,8 +96,10 @@
     <label class="lbl" id="wa-lbl-token">Kunci API</label>
     <div class="pass-wrap"><input id="wa-token" type="password" placeholder="" autocomplete="off">
       <button type="button" class="mata" id="wa-mata" aria-label="Tampilkan token">👁</button></div>
-    <label class="lbl">Tujuan <span class="ringkas">(nomor WA atau ID grup, pisahkan dengan koma)</span></label>
-    <input id="wa-target" type="text" placeholder="120363xxxxxxxx@g.us, 0812xxxxxxx">
+    <label class="lbl">Nomor WA pengasuh <span class="ringkas">(hanya menerima notifikasi kartu miliknya sendiri)</span></label>
+    <div id="wa-pengasuh" class="daftar-nomor"></div>
+    <label class="lbl">Penerima semua kartu <span class="ringkas">(admin atau grup; boleh dikosongkan, pisahkan dengan koma)</span></label>
+    <input id="wa-target" type="text" placeholder="0812xxxxxxx (admin), 120363xxxxxxxx@g.us (grup)">
     <div id="wa-pilihan" class="chip-baris" style="margin:8px 0"></div>
     <label class="lbl">Kirim notifikasi saat</label>
     <div class="cek-baris">
@@ -300,10 +302,33 @@ $("tg-simpan").onclick = async () => {
 
 // ---------- pengaturan WhatsApp ----------
 const refWA = () => doc(db, "pengaturan", "whatsapp");
+// Kolom nomor WA per pengasuh (dibuat dari daftar pemilik kartu)
+let nomorTersimpan = [];
+function gambarNomorPengasuh() {
+  const wadah = $("wa-pengasuh");
+  if (!wadah) return;
+  const isian = Object.fromEntries([...wadah.querySelectorAll("input")].map((i) => [i.dataset.email, i.value]));
+  const pemilik = [];
+  semuaKartu.filter((k) => !k.diganti).forEach((k) => {
+    if (!pemilik.some((p) => p.email === k.pemilikEmail)) pemilik.push({ email: k.pemilikEmail, nama: k.pemilik });
+  });
+  wadah.innerHTML = pemilik.map((p) => {
+    const nilai = isian[p.email] ?? nomorTersimpan.find((x) => x.email === p.email)?.nomor ?? "";
+    return `<label class="baris-nomor"><span>${esc(p.nama)}</span>
+      <input type="tel" inputmode="tel" data-email="${esc(p.email)}" data-nama="${esc(p.nama)}" value="${esc(nilai)}" placeholder="0812xxxxxxx"></label>`;
+  }).join("") || `<span class="ringkas">Belum ada kartu. Jalankan Pengaturan Awal dulu.</span>`;
+}
+function bacaNomorPengasuh() {
+  return [...$("wa-pengasuh").querySelectorAll("input")]
+    .map((i) => ({ email: i.dataset.email, nama: i.dataset.nama, nomor: i.value.trim() }))
+    .filter((p) => p.nomor);
+}
+
 function bacaFormWA() {
   return {
     penyedia: $("wa-penyedia").value, serverUrl: $("wa-url").value.trim(),
     token: $("wa-token").value.trim(), target: $("wa-target").value.trim(),
+    nomorPengasuh: bacaNomorPengasuh(),
     kirimKeluar: $("wa-keluar").checked, kirimDitolak: $("wa-ditolak").checked,
     kirimTakDikenal: $("wa-takdikenal").checked, aktif: $("wa-aktif").checked,
   };
@@ -322,10 +347,12 @@ async function muatWA() {
     const c = s.exists() ? s.data() : {};
     $("wa-penyedia").value = c.penyedia || "server"; $("wa-url").value = c.serverUrl || "";
     $("wa-token").value = c.token || ""; $("wa-target").value = c.target || "";
+    nomorTersimpan = c.nomorPengasuh || []; $("wa-pengasuh").innerHTML = ""; gambarNomorPengasuh();
     $("wa-keluar").checked = c.kirimKeluar !== false; $("wa-ditolak").checked = c.kirimDitolak !== false;
     $("wa-takdikenal").checked = c.kirimTakDikenal !== false; $("wa-aktif").checked = c.aktif !== false;
     aturTampilanWA();
-    $("wa-status").textContent = lengkap(c) && c.target ? (c.aktif === false ? "· nonaktif" : "· aktif") : "· belum diatur";
+    const adaTujuan = c.target || (c.nomorPengasuh || []).length;
+    $("wa-status").textContent = lengkap(c) && adaTujuan ? (c.aktif === false ? "· nonaktif" : "· aktif") : "· belum diatur";
     if (c.penyedia !== "fonnte" && lengkap(c)) {
       statusServerWA(c).then((st) => {
         $("wa-status").textContent += st.terhubung ? ` · WA terhubung (+${st.nomor})` : " · WA belum ditautkan";
@@ -359,15 +386,16 @@ $("wa-cari").onclick = async () => {
 };
 $("wa-uji").onclick = async () => {
   const c = bacaFormWA();
-  if (!lengkap(c) || !c.target) return beriTahu("Lengkapi data penyedia dan tujuan dulu.", "gagal");
+  const semuaTujuan = [c.target, ...c.nomorPengasuh.map((p) => p.nomor)].filter(Boolean).join(",");
+  if (!lengkap(c) || !semuaTujuan) return beriTahu("Lengkapi data penyedia dan tujuan dulu.", "gagal");
   try {
-    await kirimWA({ ...c, aktif: true }, `✅ *Uji notifikasi MDIIA Security*\nNotifikasi pindai kartu izin akan dikirim ke sini.\n🕒 ${fmtWaktu(Date.now())}`);
+    await kirimWA({ ...c, aktif: true }, `✅ *Uji notifikasi MDIIA Security*\nNotifikasi pindai kartu izin akan dikirim ke sini.\n🕒 ${fmtWaktu(Date.now())}`, semuaTujuan);
     beriTahu("✅ Pesan uji WhatsApp terkirim");
   } catch (e) { beriTahu("Gagal kirim: " + e.message, "gagal", 6000); }
 };
 $("wa-simpan").onclick = async () => {
   const c = bacaFormWA();
-  if (c.aktif && c.target && !lengkap(c)) return beriTahu("Lengkapi data penyedia, atau matikan notifikasi.", "gagal");
+  if (c.aktif && (c.target || c.nomorPengasuh.length) && !lengkap(c)) return beriTahu("Lengkapi data penyedia, atau matikan notifikasi.", "gagal");
   try {
     await setDoc(refWA(), { ...c, diubah: serverTimestamp(), oleh: emailSaya() });
     beriTahu("💾 Pengaturan WhatsApp disimpan"); muatWA();
@@ -511,6 +539,7 @@ pasangLogin({
       semuaKartu = snap.docs.map((d) => ({ id: d.id, ...d.data({ serverTimestamps: "estimate" }) }))
         .sort((a, b) => (a.pemilik + a.nomor).localeCompare(b.pemilik + b.nomor));
       gambarKartu();
+      gambarNomorPengasuh();
     });
     pasangLog();
     muatTelegram();
