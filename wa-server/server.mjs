@@ -156,6 +156,8 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (url.pathname === "/send" && req.method === "POST") {
+      // Sambungan WA kadang putus 1–3 detik lalu tersambung lagi: tunggu sampai 15 detik
+      for (let i = 0; i < 30 && !terhubung && !istirahat; i++) await new Promise((r) => setTimeout(r, 500));
       if (!terhubung) return kirimJson(res, 503, { status: false, reason: "WhatsApp belum terhubung. Scan QR dulu." });
       const body = await bacaBody(req);
       const pesan = String(body.message || "").slice(0, 4000);
